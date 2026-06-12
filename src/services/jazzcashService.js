@@ -61,20 +61,17 @@ export function generateTxnRefNo(paymentId) {
 }
 
 export function generateSecureHash(data, integritySalt) {
-  const sorted = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (key.startsWith('pp_') && key !== 'pp_SecureHash' && value !== null && value !== undefined && value !== '') {
-      sorted[key] = String(value);
-    }
-  }
+  const sortedKeys = Object.keys(data)
+    .filter((key) => key !== 'pp_SecureHash')
+    .filter((key) => {
+      const value = data[key];
+      return value !== undefined && value !== null && String(value).length > 0;
+    })
+    .sort();
 
-  const keys = Object.keys(sorted).sort();
-  let hashString = integritySalt;
-  for (const key of keys) {
-    hashString += `&${sorted[key]}`;
-  }
+  const message = [integritySalt, ...sortedKeys.map((key) => String(data[key]))].join('&');
 
-  return crypto.createHmac('sha256', integritySalt).update(hashString).digest('hex').toUpperCase();
+  return crypto.createHmac('sha256', integritySalt).update(message, 'utf8').digest('hex').toUpperCase();
 }
 
 function buildWalletPayload({

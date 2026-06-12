@@ -10,6 +10,7 @@
     "db:setup": "node database/setup.js",
     "db:migrate:email": "node database/migrate-email-verification.js",
     "db:migrate:payments": "node database/migrate-payments-jazzcash.js",
+    "db:migrate:payment-otp": "node database/migrate-payment-otp.js",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

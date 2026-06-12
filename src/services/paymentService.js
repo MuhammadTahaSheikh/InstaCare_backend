@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import pool from '../config/db.js';
 import * as jazzcash from './jazzcashService.js';
 import { notifyAppointmentConfirmed } from './appointmentNotificationService.js';
+import { sendPaymentOtpEmail } from './emailService.js';
+import { generateOtp, hashOtp, verifyOtp, getOtpExpiry, isOtpExpired } from '../utils/otp.js';
 
 const MOCK_OTP = '123456';
 
@@ -98,6 +100,42 @@ async function completePayment(payment) {
   };
 }
 
+async function getUserContact(userId) {
+  const [rows] = await pool.query('SELECT email, name FROM users WHERE id = ?', [userId]);
+  return rows[0] || null;
+}
+
+async function startEmailOtpPayment({ paymentId, userId, preview, phone }) {
+  const user = await getUserContact(userId);
+  if (!user?.email) {
+    throw new Error('No email on file for OTP delivery');
+  }
+
+  const otp = generateOtp();
+  await pool.query(
+    'UPDATE payments SET otp_hash = ?, otp_expires_at = ?, gateway_txn_ref = NULL WHERE id = ?',
+    [hashOtp(otp), getOtpExpiry(), paymentId]
+  );
+
+  await sendPaymentOtpEmail({
+    to: user.email,
+    name: user.name,
+    otp,
+    amount: preview.amount,
+    title: preview.title,
+    phone,
+  });
+
+  return {
+    payment_id: paymentId,
+    amount: preview.amount,
+    method: 'jazzcash',
+    mode: 'email',
+    otp_required: true,
+    message: `OTP sent to ${user.email}. Check your inbox (and spam).`,
+  };
+}
+
 export async function initiatePayment({ userId, type, referenceId, method, phone, cnic }) {
   const preview = await getPaymentPreview(type, referenceId, userId);
   if (!preview) throw new Error('Payment reference not found');
@@ -159,28 +197,60 @@ export async function initiatePayment({ userId, type, referenceId, method, phone
         };
       }
 
-      return {
-        payment_id: paymentId,
-        amount: preview.amount,
-        method,
-        mode: 'jazzcash',
-        otp_required: true,
-        message: `OTP sent to ${jazzcash.normalizePhone(phone)}. Check your JazzCash SMS.`,
-      };
+      if (jc.otpPending) {
+        return {
+          payment_id: paymentId,
+          amount: preview.amount,
+          method,
+          mode: 'jazzcash',
+          otp_required: true,
+          message: `OTP sent to ${jazzcash.normalizePhone(phone)}. Check your JazzCash SMS.`,
+        };
+      }
+
+      console.warn('[payment] JazzCash failed, falling back to email OTP:', jc.message);
+      return startEmailOtpPayment({ paymentId, userId, preview, phone });
     } catch (err) {
-      await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
-      throw new Error(err.message || 'JazzCash payment initiation failed');
+      console.warn('[payment] JazzCash error, falling back to email OTP:', err.message);
+      try {
+        return await startEmailOtpPayment({ paymentId, userId, preview, phone });
+      } catch (fallbackErr) {
+        await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
+        throw new Error(fallbackErr.message || err.message || 'JazzCash payment initiation failed');
+      }
     }
   }
+
+  const user = await getUserContact(userId);
+  if (!user?.email) {
+    await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
+    throw new Error('No email on file for OTP delivery');
+  }
+
+  const otp = generateOtp();
+  await pool.query('UPDATE payments SET otp_hash = ?, otp_expires_at = ? WHERE id = ?', [
+    hashOtp(otp),
+    getOtpExpiry(),
+    paymentId,
+  ]);
+
+  await sendPaymentOtpEmail({
+    to: user.email,
+    name: user.name,
+    otp,
+    amount: preview.amount,
+    title: preview.title,
+    phone,
+  });
 
   return {
     payment_id: paymentId,
     amount: preview.amount,
     method,
-    mode: 'demo',
+    mode: 'email',
     otp_required: true,
-    message: `OTP sent to ${phone}. Use ${MOCK_OTP} in demo mode.`,
-    demo_otp: process.env.NODE_ENV !== 'production' ? MOCK_OTP : undefined,
+    message: `OTP sent to ${user.email}. Check your inbox (and spam).`,
+    demo_otp: process.env.NODE_ENV !== 'production' ? otp : undefined,
   };
 }
 
@@ -193,6 +263,22 @@ export async function verifyPayment({ paymentId, userId, otp }) {
 
   const payment = payments[0];
   if (payment.status === 'completed') throw new Error('Payment already completed');
+
+  if (payment.otp_hash) {
+    if (isOtpExpired(payment.otp_expires_at)) {
+      await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
+      throw new Error('OTP expired. Please start payment again.');
+    }
+    if (!verifyOtp(otp, payment.otp_hash)) {
+      await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
+      throw new Error('Invalid OTP. Please try again.');
+    }
+    await pool.query(
+      'UPDATE payments SET otp_hash = NULL, otp_expires_at = NULL WHERE id = ?',
+      [paymentId]
+    );
+    return completePayment(payment);
+  }
 
   if (payment.method === 'jazzcash' && payment.gateway_txn_ref && jazzcash.isJazzCashConfigured()) {
     const preview = await getPaymentPreview(
