@@ -1,0 +1,255 @@
+{
+  "name": "BestechCare Appointment Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Setup\n1. Activate this workflow\n2. Copy the **Webhook** production URL into backend `.env`:\n   `N8N_APPOINTMENT_WEBHOOK_URL=<webhook-url>`\n3. Set the same secret in backend `.env`:\n   `N8N_WEBHOOK_SECRET=<your-secret>`\n4. Update **Check appointment status** header `X-Webhook-Secret`\n5. Connect **Send reminder email** to your SMTP credentials\n6. Optional: set `fromEmail` to match your Hostinger address\n\n**Events from backend**\n- `appointment.confirmed` → wait until 1 hour before → reminder email\n- `appointment.cancelled` → logged only (status check blocks reminder anyway)",
+        "height": 340,
+        "width": 520
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Setup notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-320, -120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "appointment-notifications",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "bestechcare-appointment-notifications"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-confirmed",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "appointment.confirmed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "name": "Is confirmed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst reminderAt = new Date(item.reminder_at);\nconst waitSeconds = Math.max(\n  0,\n  Math.floor((reminderAt.getTime() - Date.now()) / 1000)\n);\n\nreturn [\n  {\n    json: {\n      ...item,\n      wait_seconds: waitSeconds,\n    },\n  },\n];"
+      },
+      "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
+      "name": "Calculate wait time",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 220]
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $json.wait_seconds }}",
+        "unit": "seconds"
+      },
+      "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
+      "name": "Wait until 1 hour before",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [960, 220],
+      "webhookId": "bestechcare-appointment-wait"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Calculate wait time').item.json.status_check_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "cca72d348486172d0b58a7c6e5ead77bf132f6d0eb99fee8b1dff65564c8d1ac"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f6a7b8c9-d0e1-2345-f012-456789012345",
+      "name": "Check appointment status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 220]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "should-remind",
+              "leftValue": "={{ $json.should_send_reminder }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a7b8c9d0-e1f2-3456-0123-567890123456",
+      "name": "Still confirmed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1440, 220]
+    },
+    {
+      "parameters": {
+        "fromEmail": "BestechCare <info@bestechvision.com>",
+        "toEmail": "={{ $json.patient_email }}",
+        "subject": "=Reminder: Appointment with {{ $json.doctor_name }} in 1 hour",
+        "emailFormat": "html",
+        "html": "=<p>Hi {{ $json.patient_name }},</p>\n<p>This is a reminder that your appointment is in <strong>1 hour</strong>.</p>\n<table cellpadding=\"6\" style=\"border-collapse:collapse;\">\n  <tr><td><strong>Doctor</strong></td><td>{{ $json.doctor_name }} ({{ $json.specialty_name }})</td></tr>\n  <tr><td><strong>When</strong></td><td>{{ $json.appointment_display }}</td></tr>\n  <tr><td><strong>Type</strong></td><td>{{ $json.type_label }}</td></tr>\n</table>\n<p>See you soon!<br>BestechCare</p>",
+        "options": {}
+      },
+      "id": "b8c9d0e1-f2a3-4567-1234-678901234567",
+      "name": "Send reminder email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1680, 140]
+    },
+    {
+      "parameters": {},
+      "id": "c9d0e1f2-a3b4-5678-2345-789012345678",
+      "name": "Skip reminder",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1680, 320]
+    },
+    {
+      "parameters": {},
+      "id": "d0e1f2a3-b4c5-6789-3456-890123456789",
+      "name": "Cancelled or other event",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [720, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is confirmed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is confirmed?": {
+      "main": [
+        [
+          {
+            "node": "Calculate wait time",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cancelled or other event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate wait time": {
+      "main": [
+        [
+          {
+            "node": "Wait until 1 hour before",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait until 1 hour before": {
+      "main": [
+        [
+          {
+            "node": "Check appointment status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check appointment status": {
+      "main": [
+        [
+          {
+            "node": "Still confirmed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still confirmed?": {
+      "main": [
+        [
+          {
+            "node": "Send reminder email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

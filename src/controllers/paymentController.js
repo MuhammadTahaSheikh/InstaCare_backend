@@ -19,7 +19,7 @@ export async function getPreview(req, res) {
 
 export async function initiate(req, res) {
   try {
-    const { type, reference_id, method, phone } = req.body;
+    const { type, reference_id, method, phone, cnic } = req.body;
 
     if (!type || !reference_id || !method || !phone) {
       return res.status(400).json({ error: 'All payment fields are required' });
@@ -34,10 +34,24 @@ export async function initiate(req, res) {
       referenceId: reference_id,
       method,
       phone,
+      cnic,
     });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+}
+
+export async function jazzcashCallback(req, res) {
+  try {
+    const result = await paymentService.handleJazzCashCallback(req.body);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const redirectPath = result.reference_type === 'appointment' ? '/appointments' : '/orders';
+    const status = result.already_completed || result.success ? 'success' : 'failed';
+    res.redirect(`${frontendUrl}/payment/result?status=${status}&payment_id=${result.payment_id || ''}`);
+  } catch (err) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/payment/result?status=failed&message=${encodeURIComponent(err.message)}`);
   }
 }
 

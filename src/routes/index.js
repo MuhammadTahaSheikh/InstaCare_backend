@@ -11,6 +11,7 @@ import * as medicines from '../controllers/medicineController.js';
 import * as admin from '../controllers/adminController.js';
 import * as payments from '../controllers/paymentController.js';
 import * as consultation from '../controllers/consultationController.js';
+import { requireWebhookSecret } from '../middleware/webhookAuth.js';
 
 const adminOnly = [authenticate, requireRole('admin')];
 
@@ -42,11 +43,17 @@ router.get('/lab-tests', labs.getLabTests);
 router.post('/appointments', authenticate, appointments.createAppointment);
 router.get('/appointments/my', authenticate, appointments.getMyAppointments);
 router.patch('/appointments/:id/cancel', authenticate, appointments.cancelAppointment);
+router.get(
+  '/appointments/:id/reminder-status',
+  requireWebhookSecret,
+  appointments.getAppointmentReminderStatus
+);
 
 // Payments
 router.get('/payments/preview', authenticate, payments.getPreview);
 router.post('/payments/initiate', authenticate, payments.initiate);
 router.post('/payments/verify', authenticate, payments.verify);
+router.post('/payments/jazzcash/callback', payments.jazzcashCallback);
 
 // Video Consultation
 router.get('/consultation/doctor/my', authenticate, consultation.getDoctorConsultations);

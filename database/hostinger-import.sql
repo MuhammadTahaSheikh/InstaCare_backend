@@ -97,7 +97,9 @@ CREATE TABLE IF NOT EXISTS payments (
   reference_type ENUM('appointment', 'order') NOT NULL,
   reference_id INT NOT NULL,
   transaction_id VARCHAR(100),
+  gateway_txn_ref VARCHAR(50),
   phone VARCHAR(20) NOT NULL,
+  cnic_last6 VARCHAR(6),
   status ENUM('pending', 'completed', 'failed') DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

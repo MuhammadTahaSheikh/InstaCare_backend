@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "db:setup": "node database/setup.js",
     "db:migrate:email": "node database/migrate-email-verification.js",
+    "db:migrate:payments": "node database/migrate-payments-jazzcash.js",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

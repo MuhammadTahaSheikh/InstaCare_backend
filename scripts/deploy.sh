@@ -14,11 +14,17 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+if [[ -f .env.local ]] && [[ "${KEEP_ENV_LOCAL:-}" != "1" ]]; then
+  echo "WARNING: Removing .env.local on server (local dev overrides must not run in production)."
+  rm -f .env.local
+fi
+
 echo "==> Installing dependencies..."
 npm install
 
-echo "==> Running email verification migration..."
+echo "==> Running database migrations..."
 npm run db:migrate:email
+npm run db:migrate:payments
 
 echo "==> Restarting PM2..."
 if pm2 describe instacare-api >/dev/null 2>&1; then

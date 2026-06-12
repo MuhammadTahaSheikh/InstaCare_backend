@@ -1,4 +1,8 @@
 import pool from '../config/db.js';
+import {
+  getReminderStatus,
+  notifyAppointmentCancelled,
+} from '../services/appointmentNotificationService.js';
 
 export async function createAppointment(req, res) {
   try {
@@ -59,7 +63,25 @@ export async function cancelAppointment(req, res) {
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
+
+    notifyAppointmentCancelled(req.params.id).catch((err) => {
+      console.error('[appointment] cancel notify failed:', err.message);
+    });
+
     res.json({ message: 'Appointment cancelled' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/** Called by n8n before sending the 1-hour reminder email. */
+export async function getAppointmentReminderStatus(req, res) {
+  try {
+    const status = await getReminderStatus(req.params.id);
+    if (!status) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+    res.json(status);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
