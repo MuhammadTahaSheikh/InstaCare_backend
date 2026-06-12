@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Setup\n1. Activate this workflow\n2. Backend `.env`: `N8N_APPOINTMENT_WEBHOOK_URL` + `N8N_WEBHOOK_SECRET`\n3. Connect **both email nodes** to your Hostinger SMTP credential\n4. **Check appointment status** header: `X-Webhook-Secret`\n\n**Flow**\n- `appointment.confirmed` → confirmation email now → wait → reminder email\n- `appointment.cancelled` → stop (reminder skipped via status check)",
+        "content": "## Setup\n1. Activate this workflow\n2. Backend `.env`: `N8N_APPOINTMENT_WEBHOOK_URL` + `N8N_WEBHOOK_SECRET`\n3. Connect **both email nodes** to your Hostinger SMTP credential\n4. **Check appointment status** header: `X-Webhook-Secret`\n\n**Flow**\n- `appointment.confirmed` → calculate wait → confirmation email → wait → reminder email\n- `appointment.cancelled` → stop",
         "height": 340,
         "width": 520
       },
@@ -83,7 +83,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst reminderAt = new Date(item.reminder_at);\nconst waitSeconds = Math.max(\n  0,\n  Math.floor((reminderAt.getTime() - Date.now()) / 1000)\n);\n\nreturn [\n  {\n    json: {\n      ...item,\n      wait_seconds: waitSeconds,\n    },\n  },\n];"
+        "jsCode": "const item = $('Flatten payload').first().json;\nconst reminderAt = new Date(item.reminder_at);\nconst waitSeconds = Math.max(\n  0,\n  Math.floor((reminderAt.getTime() - Date.now()) / 1000)\n);\n\nreturn [\n  {\n    json: {\n      ...item,\n      wait_seconds: waitSeconds,\n    },\n  },\n];"
       },
       "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
       "name": "Calculate wait time",
@@ -94,7 +94,7 @@
     {
       "parameters": {
         "resume": "timeInterval",
-        "amount": "={{ $json.wait_seconds }}",
+        "amount": "={{ $('Calculate wait time').item.json.wait_seconds }}",
         "unit": "seconds"
       },
       "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
@@ -212,7 +212,7 @@
       "main": [
         [
           {
-            "node": "Send confirmation email",
+            "node": "Calculate wait time",
             "type": "main",
             "index": 0
           }
@@ -226,18 +226,18 @@
         ]
       ]
     },
-    "Send confirmation email": {
+    "Calculate wait time": {
       "main": [
         [
           {
-            "node": "Calculate wait time",
+            "node": "Send confirmation email",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Calculate wait time": {
+    "Send confirmation email": {
       "main": [
         [
           {
