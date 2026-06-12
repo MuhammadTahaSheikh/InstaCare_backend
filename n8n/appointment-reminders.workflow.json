@@ -1,9 +1,9 @@
 {
-  "name": "BestechCare Appointment Reminders",
+  "name": "BestechCare Appointment Emails",
   "nodes": [
     {
       "parameters": {
-        "content": "## Setup\n1. Activate this workflow\n2. Copy the **Webhook** production URL into backend `.env`:\n   `N8N_APPOINTMENT_WEBHOOK_URL=<webhook-url>`\n3. Set the same secret in backend `.env`:\n   `N8N_WEBHOOK_SECRET=<your-secret>`\n4. Update **Check appointment status** header `X-Webhook-Secret`\n5. Connect **Send reminder email** to your SMTP credentials\n6. Optional: set `fromEmail` to match your Hostinger address\n\n**Events from backend**\n- `appointment.confirmed` → wait until 1 hour before → reminder email\n- `appointment.cancelled` → logged only (status check blocks reminder anyway)",
+        "content": "## Setup\n1. Activate this workflow\n2. Backend `.env`: `N8N_APPOINTMENT_WEBHOOK_URL` + `N8N_WEBHOOK_SECRET`\n3. Connect **both email nodes** to your Hostinger SMTP credential\n4. **Check appointment status** header: `X-Webhook-Secret`\n\n**Flow**\n- `appointment.confirmed` → confirmation email now → wait → reminder email\n- `appointment.cancelled` → stop (reminder skipped via status check)",
         "height": 340,
         "width": 520
       },
@@ -26,6 +26,16 @@
       "typeVersion": 2,
       "position": [240, 300],
       "webhookId": "bestechcare-appointment-notifications"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nlet data = raw.body ?? raw;\nif (typeof data === 'string') {\n  try {\n    data = JSON.parse(data);\n  } catch {\n    data = raw;\n  }\n}\nreturn [{ json: data }];"
+      },
+      "id": "e1f2a3b4-c5d6-7890-abcd-ef1234567890",
+      "name": "Flatten payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 300]
     },
     {
       "parameters": {
@@ -54,7 +64,22 @@
       "name": "Is confirmed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [480, 300]
+      "position": [600, 220]
+    },
+    {
+      "parameters": {
+        "fromEmail": "BestechCare <info@bestechvision.com>",
+        "toEmail": "={{ $json.patient_email }}",
+        "subject": "=Appointment confirmed — {{ $json.doctor_name }}",
+        "emailFormat": "html",
+        "html": "=<p>Hi {{ $json.patient_name }},</p>\n<p>Your appointment is <strong>confirmed</strong>.</p>\n<table cellpadding=\"6\" style=\"border-collapse:collapse;\">\n  <tr><td><strong>Doctor</strong></td><td>{{ $json.doctor_name }} ({{ $json.specialty_name }})</td></tr>\n  <tr><td><strong>When</strong></td><td>{{ $json.appointment_display }}</td></tr>\n  <tr><td><strong>Type</strong></td><td>{{ $json.type_label }}</td></tr>\n</table>\n<p>We will send you a reminder email <strong>one hour before</strong> your appointment.</p>\n<p>Thank you for choosing BestechCare.</p>",
+        "options": {}
+      },
+      "id": "f1a2b3c4-d5e6-7890-abcd-ef1234567890",
+      "name": "Send confirmation email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 220]
     },
     {
       "parameters": {
@@ -64,7 +89,7 @@
       "name": "Calculate wait time",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [720, 220]
+      "position": [960, 220]
     },
     {
       "parameters": {
@@ -76,7 +101,7 @@
       "name": "Wait until 1 hour before",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [960, 220],
+      "position": [1200, 220],
       "webhookId": "bestechcare-appointment-wait"
     },
     {
@@ -97,7 +122,7 @@
       "name": "Check appointment status",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1200, 220]
+      "position": [1440, 220]
     },
     {
       "parameters": {
@@ -126,7 +151,7 @@
       "name": "Still confirmed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1440, 220]
+      "position": [1680, 220]
     },
     {
       "parameters": {
@@ -141,7 +166,7 @@
       "name": "Send reminder email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [1680, 140]
+      "position": [1920, 140]
     },
     {
       "parameters": {},
@@ -149,7 +174,7 @@
       "name": "Skip reminder",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1680, 320]
+      "position": [1920, 320]
     },
     {
       "parameters": {},
@@ -165,6 +190,17 @@
       "main": [
         [
           {
+            "node": "Flatten payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten payload": {
+      "main": [
+        [
+          {
             "node": "Is confirmed?",
             "type": "main",
             "index": 0
@@ -176,7 +212,7 @@
       "main": [
         [
           {
-            "node": "Calculate wait time",
+            "node": "Send confirmation email",
             "type": "main",
             "index": 0
           }
@@ -184,6 +220,17 @@
         [
           {
             "node": "Cancelled or other event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send confirmation email": {
+      "main": [
+        [
+          {
+            "node": "Calculate wait time",
             "type": "main",
             "index": 0
           }

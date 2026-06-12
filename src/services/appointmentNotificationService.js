@@ -53,6 +53,24 @@ function buildPayload(appointment, event) {
   };
 }
 
+async function fallbackConfirmationEmail(appointment, payload) {
+  try {
+    await sendAppointmentConfirmationEmail({
+      to: appointment.patient_email,
+      name: appointment.patient_name,
+      doctorName: appointment.doctor_name,
+      specialtyName: appointment.specialty_name,
+      appointmentDisplay: payload.appointment_display,
+      typeLabel: payload.type_label,
+      roomId: appointment.room_id,
+      frontendUrl: payload.frontend_url,
+    });
+    console.log('[appointment] confirmation sent via SMTP fallback');
+  } catch (err) {
+    console.error('[appointment] SMTP fallback failed:', err.message);
+  }
+}
+
 export async function notifyAppointmentConfirmed(appointmentId) {
   const appointment = await fetchAppointmentDetails(appointmentId);
   if (!appointment) {
@@ -65,23 +83,12 @@ export async function notifyAppointmentConfirmed(appointmentId) {
   }
 
   const payload = buildPayload(appointment, 'appointment.confirmed');
+  const result = await notifyN8n(payload);
 
-  try {
-    await sendAppointmentConfirmationEmail({
-      to: appointment.patient_email,
-      name: appointment.patient_name,
-      doctorName: appointment.doctor_name,
-      specialtyName: appointment.specialty_name,
-      appointmentDisplay: payload.appointment_display,
-      typeLabel: payload.type_label,
-      roomId: appointment.room_id,
-      frontendUrl: payload.frontend_url,
-    });
-  } catch (err) {
-    console.error('[appointment] confirmation email failed:', err.message);
+  if (result?.skipped || result?.ok === false) {
+    console.warn('[appointment] n8n webhook unavailable — using SMTP fallback');
+    await fallbackConfirmationEmail(appointment, payload);
   }
-
-  await notifyN8n(payload);
 }
 
 export async function notifyAppointmentCancelled(appointmentId) {
