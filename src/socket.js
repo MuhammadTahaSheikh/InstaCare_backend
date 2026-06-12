@@ -5,7 +5,10 @@ const rooms = new Map();
 
 export function initSocket(httpServer) {
   const io = new Server(httpServer, {
-    cors: { origin: '*', methods: ['GET', 'POST'] },
+    cors: {
+      origin: ['https://bestech-care.vercel.app', 'http://localhost:3000'],
+      methods: ['GET', 'POST'],
+    },
   });
 
   io.use((socket, next) => {
