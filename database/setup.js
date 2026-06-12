@@ -54,7 +54,7 @@ async function setup() {
 setup().catch((err) => {
   console.error('Setup failed:', err.message);
   if (err.message.includes('Access denied')) {
-    console.error('\nTip: For local dev, use backend/.env.local with your Mac MySQL user (root).');
+    console.error('\nTip: For local dev, run `cp .env.local.example .env.local` (MySQL user: root).');
     console.error('     Hostinger DB_USER only works when deployed on Hostinger.');
   }
   process.exit(1);
