@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS users (
   phone VARCHAR(20),
   role ENUM('patient', 'doctor', 'admin') DEFAULT 'patient',
   city_id INT,
+  email_verified BOOLEAN DEFAULT FALSE,
+  verification_token VARCHAR(255) NULL,
+  verification_token_expires_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE SET NULL
 );

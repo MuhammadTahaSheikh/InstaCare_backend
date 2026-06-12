@@ -31,13 +31,13 @@ INSERT INTO hospitals (name, slug, description, address, city_id, phone, rating,
 ('MIH', 'mih', 'Multi-specialty hospital serving Airline Housing Society and surrounding areas', '375 Airline Housing Society, Lahore', 1, '03114315611', 4.7, TRUE);
 
 -- Sample users (password: password123 - hashed with bcrypt)
-INSERT INTO users (name, email, password, phone, role, city_id) VALUES
-('Dr. Ayesha Khan', 'ayesha.khan@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03001234567', 'doctor', 1),
-('Dr. Ahmed Ali', 'ahmed.ali@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03009876543', 'doctor', 1),
-('Dr. Sara Malik', 'sara.malik@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03001112233', 'doctor', 3),
-('Patient Demo', 'patient@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03114315611', 'patient', 1),
-('Admin User', 'admin@bestechcare.pk', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03114315611', 'admin', 1),
-('Dr. Arslan Amjad', 'arslan.amjad@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03114315611', 'doctor', 1);
+INSERT INTO users (name, email, password, phone, role, city_id, email_verified) VALUES
+('Dr. Ayesha Khan', 'ayesha.khan@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03001234567', 'doctor', 1, TRUE),
+('Dr. Ahmed Ali', 'ahmed.ali@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03009876543', 'doctor', 1, TRUE),
+('Dr. Sara Malik', 'sara.malik@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03001112233', 'doctor', 3, TRUE),
+('Patient Demo', 'patient@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03114315611', 'patient', 1, TRUE),
+('Admin User', 'admin@bestechcare.pk', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03114315611', 'admin', 1, TRUE),
+('Dr. Arslan Amjad', 'arslan.amjad@example.com', '$2a$10$rQZ8K8Y5Y5Y5Y5Y5Y5Y5YuK8Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', '03114315611', 'doctor', 1, TRUE);
 
 -- Sample doctors
 INSERT INTO doctors (user_id, specialty_id, hospital_id, qualification, experience_years, consultation_fee, online_consultation, in_clinic, bio, rating, is_verified) VALUES

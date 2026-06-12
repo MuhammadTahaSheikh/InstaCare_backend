@@ -19,6 +19,9 @@ const router = Router();
 // Auth
 router.post('/auth/register', auth.register);
 router.post('/auth/login', auth.login);
+router.get('/auth/verify-email', auth.verifyEmail);
+router.post('/auth/verify-email', auth.verifyEmail);
+router.post('/auth/resend-verification', auth.resendVerification);
 router.get('/auth/profile', authenticate, auth.getProfile);
 
 // Doctors
