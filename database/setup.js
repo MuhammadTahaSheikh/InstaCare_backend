@@ -54,8 +54,8 @@ async function setup() {
 setup().catch((err) => {
   console.error('Setup failed:', err.message);
   if (err.message.includes('Access denied')) {
-    console.error('\nTip: For local dev, run `cp .env.local.example .env.local` (MySQL user: root).');
-    console.error('     Hostinger DB_USER only works when deployed on Hostinger.');
+    console.error('\nTip (Hostinger): hPanel → Databases → Remote MySQL → add your IP, then retry.');
+    console.error('     For local MySQL instead, set DB_HOST=localhost in .env.local (see .env.local.example).');
   }
   process.exit(1);
 });
