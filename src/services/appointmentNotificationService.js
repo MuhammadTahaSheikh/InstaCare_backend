@@ -1,7 +1,7 @@
 import pool from '../config/db.js';
 import { sendAppointmentConfirmationEmail } from './emailService.js';
 import { notifyN8n } from './n8nService.js';
-import { formatAppointmentDisplay, getReminderAt } from '../utils/appointmentTime.js';
+import { formatAppointmentDisplay, getReminderAt, normalizeAppointmentDate, normalizeAppointmentTime } from '../utils/appointmentTime.js';
 
 async function fetchAppointmentDetails(appointmentId) {
   const [rows] = await pool.query(
@@ -29,6 +29,8 @@ function buildStatusCheckUrl(appointmentId) {
 
 function buildPayload(appointment, event) {
   const typeLabel = appointment.type === 'online' ? 'Online consultation' : 'In-clinic visit';
+  const appointmentDate = normalizeAppointmentDate(appointment.appointment_date);
+  const appointmentTime = normalizeAppointmentTime(appointment.appointment_time);
 
   return {
     event,
@@ -37,18 +39,15 @@ function buildPayload(appointment, event) {
     patient_name: appointment.patient_name,
     doctor_name: appointment.doctor_name,
     specialty_name: appointment.specialty_name,
-    appointment_date: appointment.appointment_date,
-    appointment_time: appointment.appointment_time,
-    appointment_display: formatAppointmentDisplay(
-      appointment.appointment_date,
-      appointment.appointment_time
-    ),
+    appointment_date: appointmentDate,
+    appointment_time: appointmentTime,
+    appointment_display: formatAppointmentDisplay(appointmentDate, appointmentTime),
     type: appointment.type,
     type_label: typeLabel,
     status: appointment.status,
     payment_status: appointment.payment_status,
     room_id: appointment.room_id || null,
-    reminder_at: getReminderAt(appointment.appointment_date, appointment.appointment_time).toISOString(),
+    reminder_at: getReminderAt(appointmentDate, appointmentTime).toISOString(),
     status_check_url: buildStatusCheckUrl(appointment.id),
     frontend_url: process.env.FRONTEND_URL || '',
   };
@@ -108,8 +107,8 @@ export async function getReminderStatus(appointmentId) {
     patient_name: appointment.patient_name,
     doctor_name: appointment.doctor_name,
     specialty_name: appointment.specialty_name,
-    appointment_date: appointment.appointment_date,
-    appointment_time: appointment.appointment_time,
+    appointment_date: normalizeAppointmentDate(appointment.appointment_date),
+    appointment_time: normalizeAppointmentTime(appointment.appointment_time),
     appointment_display: formatAppointmentDisplay(
       appointment.appointment_date,
       appointment.appointment_time
