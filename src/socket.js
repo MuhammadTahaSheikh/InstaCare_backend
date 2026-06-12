@@ -34,6 +34,10 @@ export function initSocket(httpServer) {
       const others = [...socket.adapter.rooms.get(roomId) || []].filter((id) => id !== socket.id);
       if (others.length > 0) {
         socket.to(roomId).emit('user-joined', { role, socketId: socket.id });
+        // Joiner is doctor but patient was already waiting — only existing peers got user-joined.
+        if (role === 'doctor') {
+          socket.emit('user-joined', { role: 'patient', socketId: others[0] });
+        }
       }
 
       socket.emit('room-joined', { roomId, participants: rooms.get(roomId).size });
