@@ -38,10 +38,11 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("greeting", re.compile(
         r"(^|\b)(hello|hi\b|hey\b|good morning|good evening|good afternoon|good night|"
         r"how are you|how r u|how're you|"
-        r"assalam|salam|adaab|salam alaikum|"
-        r"kaise ho|kaisa hai|kya hal|kyaa haal|"
+        r"assalam|salam|adaab|salam alaikum|walaikum|"
+        r"kaise ho|kaisa hai|kase ha|kese ho|kesa ha|kya hal|kyaa haal|"
         r"aap kaise|ap kaise|aap kaisay|ap kaisay|"
-        r"aap kaise hain|ap kaise hain|"
+        r"aap kaise hain|ap kaise hain|kase ha ap|kese ho ap|ha ap|ho ap|"
+        r"theek ho|theek hain|"
         r"آپ کیسے|کیسے ہو|السلام|سلام|ہیلو|ہیلو)",
         re.I,
     )),
@@ -188,6 +189,11 @@ RESPONSES_ROMAN: dict[str, str] = {
         "Main sehat ke sawalat ke liye hoon. Misal: \"mujhe 2 din se bukhar hai\" ya \"sar mein dard hai\"."
     ),
     "goodbye": "Khuda hafiz! Jab bhi sehat ka sawal ho wapas aayein.",
+    "greeting_casual": (
+        "Alhamdulillah, main theek hoon! Aap sunao, aap kaise hain?\n\n"
+        "Main BestechCare ka AI Doctor hoon — agar koi alamat ya sehat ka masla ho "
+        "(jaise bukhar, sar dard, khansi, pet dard) to bata dein, main madad karunga."
+    ),
 }
 
 
@@ -234,6 +240,9 @@ def get_conversational_response(intent: Intent, lang: Lang, messages: list[dict]
         return f"{body}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     if intent == "greeting":
+        if roman:
+            body = RESPONSES_ROMAN["greeting_casual"]
+            return f"{body}\n\n⚠️ {t('disclaimer', lang, roman=True)}"
         return f"{t('greeting_reply', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     if intent == "thanks":

@@ -11,13 +11,24 @@ URDU_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uF
 DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
 
 ROMAN_URDU_MARKERS = [
-    "mujhe", "mjhe", "mera", "meri", "aap", "ap ", " hai", "kya", "bukhar", "dard", "takleef",
+    "mujhe", "mjhe", "mera", "meri", "aap", "ap ", " hai", " ha ", "kya", "bukhar", "dard", "takleef",
     "beemar", "dawai", "ilaj", "tabiyat", "shukriya", "mein bol", "urdu mein",
     "pet dard", "sar dard", "zukam", "khansi", "bimaar", "masla",
     "ho rha", "ho rhi", "ho raha", "ho rahi", " rha ", " rhi ", " raha ", " rahi ",
     "din se", " se ", "kal se", "aaj se", " ghante", " sar ", " sir ", " pet ", " pait ",
     "mjhy", "mujhy", "mery", "apko", "aapko", "batao", "batayein", "theek", "nahi", "nahin",
+    "kaise", "kaisa", "kase", "kese", "kesa", "kaisay", "salam", "assalam", "walaikum",
+    "kaise ho", "kase ha", "kese ho", "kya hal", "ha ap", "ho ap", "sunao", "bhai",
+    "alhamdulillah", "shukria", "ji ", " han ", "nhi ",
 ]
+
+ROMAN_URDU_GREETING_RE = re.compile(
+    r"(^|\b)(salam|assalam|adaab|walaikum|kaise|kaisa|kase|kese|kesa|kaisay|"
+    r"kaise ho|kase ha|kese ho|kesa ha|kya hal|kyaa haal|theek ho|theek hain|"
+    r"aap kaise|ap kaise|aap kaisay|ap kaisay|ha ap|ho ap|"
+    r"salam alaikum|assalam o alaikum|assalamu alaikum)(\b|$|[^\w])",
+    re.I,
+)
 
 LANGUAGE_SWITCH_PATTERNS: list[tuple[re.Pattern[str], Lang]] = [
     (re.compile(r"\b(urdu|اردو)\b|urdu mein|speak urdu|in urdu|urdu please|urdu main|urdu me", re.I), "ur"),
@@ -226,8 +237,9 @@ ROMAN_STRINGS: dict[str, str] = {
         "jaise bukhar, sar dard, khansi, ya pet dard."
     ),
     "greeting_reply": (
-        "Walaikum assalam! Main theek hoon, poochhne ka shukriya. Main BestechCare ka AI Doctor hoon.\n\n"
-        "Aaj aap ko kya alamat ya sehat ka masla hai? Tafseel se batayein."
+        "Alhamdulillah, main theek hoon! Aap sunao, aap kaise hain?\n\n"
+        "Main BestechCare ka AI Doctor hoon — agar koi alamat ya sehat ka masla ho "
+        "(jaise bukhar, sar dard, khansi, pet dard) to bata dein, main madad karunga."
     ),
     "thanks_reply": "Khush amdeed! Kya sehat ke bare mein kuch aur poochna hai?",
     "unclear_reply": (
@@ -311,13 +323,28 @@ def specialty_name(slug: str, lang: Lang, *, roman: bool = False) -> str:
     return SPECIALTY_NAMES.get(slug, {}).get(lang) or slug.replace("-", " ").title()
 
 
+def _looks_roman_urdu(text: str) -> bool:
+    if not text or URDU_SCRIPT_RE.search(text):
+        return False
+    if _score_roman_urdu(text) >= 1:
+        return True
+    return bool(ROMAN_URDU_GREETING_RE.search(text))
+
+
 def reply_in_roman_urdu(text: str) -> bool:
     """True when user writes Urdu in Latin script (Roman Urdu), not Urdu script."""
-    if not text or not text.strip():
+    return _looks_roman_urdu(text)
+
+
+def resolve_roman_urdu(messages: list[dict]) -> bool:
+    """Use recent user messages to keep Roman Urdu replies in a conversation."""
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    if not user_messages:
         return False
-    if URDU_SCRIPT_RE.search(text):
-        return False
-    return detect_language_from_text(text) == "ur"
+    for msg in reversed(user_messages[-3:]):
+        if reply_in_roman_urdu(msg.get("content", "")):
+            return True
+    return False
 
 
 def _score_roman_urdu(text: str) -> int:
@@ -351,6 +378,10 @@ def detect_language_from_text(text: str) -> Lang | None:
 
     lower = text.lower()
     urdu_score = _score_roman_urdu(text)
+
+    if _looks_roman_urdu(text):
+        if not _looks_english(text) or urdu_score >= 1:
+            return "ur"
 
     # Latin script: prefer English when clearly English and not Roman Urdu
     if _looks_english(text) and urdu_score == 0:

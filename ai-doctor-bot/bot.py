@@ -15,6 +15,7 @@ from i18n import (
     voice_lang_for,
     detect_language_from_text,
     reply_in_roman_urdu,
+    resolve_roman_urdu,
 )
 from knowledge import EMERGENCY_KEYWORDS, SPECIALTY_SLUGS, SYMPTOM_RULES
 from text_utils import normalize_text
@@ -531,12 +532,16 @@ class AiDoctorBot:
 
         last_user = user_messages[-1]["content"]
         lang = detect_language_from_text(last_user) or resolve_language(messages)
-        roman = lang == "ur" and reply_in_roman_urdu(last_user)
+        roman = resolve_roman_urdu(messages) or (lang == "ur" and reply_in_roman_urdu(last_user))
+        if roman:
+            lang = "ur"
 
         switch = is_language_switch_request(last_user)
         if switch:
             lang = switch
-            roman = lang == "ur" and reply_in_roman_urdu(last_user)
+            roman = resolve_roman_urdu(messages) or (lang == "ur" and reply_in_roman_urdu(last_user))
+            if roman:
+                lang = "ur"
             if not _match_rules(_all_user_text(messages)):
                 return t("lang_switched", lang, roman=roman), lang, roman
 
@@ -579,7 +584,9 @@ class AiDoctorBot:
         lang = resolve_language(messages)
         user_messages = [m for m in messages if m.get("role") == "user"]
         last_user = user_messages[-1]["content"] if user_messages else ""
-        roman = lang == "ur" and reply_in_roman_urdu(last_user)
+        roman = resolve_roman_urdu(messages) or (lang == "ur" and reply_in_roman_urdu(last_user))
+        if roman:
+            lang = "ur"
         user_text = _all_user_text(messages)
         matched = _match_rules(user_text)
         data = _merge_rules(matched, lang, roman=roman)
