@@ -1,21 +1,18 @@
-"""BestechCare AI Doctor Bot — FastAPI microservice (no OpenAI key required)."""
+"""BestechCare AI Doctor Bot — FastAPI microservice."""
 
 from __future__ import annotations
 
 import os
-from typing import Literal
 
-import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+from typing import Literal
 
 from bot import bot
+from i18n import voice_lang_for
+from llm import dynamic_chat, get_llm_status
 
-app = FastAPI(title="BestechCare AI Doctor Bot", version="1.0.0")
-
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
-USE_OLLAMA = os.getenv("AI_DOCTOR_USE_OLLAMA", "").lower() in ("1", "true", "yes")
+app = FastAPI(title="BestechCare AI Doctor Bot", version="2.0.0")
 
 
 class ChatMessage(BaseModel):
@@ -51,58 +48,13 @@ class SummaryResponse(BaseModel):
     voice_lang: str = "en-US"
 
 
-async def _ollama_available() -> bool:
-    if not USE_OLLAMA:
-        return False
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            res = await client.get(f"{OLLAMA_URL}/api/tags")
-            return res.status_code == 200
-    except Exception:
-        return False
-
-
-async def _ollama_chat(messages: list[dict]) -> str | None:
-    if not await _ollama_available():
-        return None
-
-    system = (
-        "You are BestechCare AI Doctor for users in Pakistan. "
-        "Give informational health guidance only, not diagnoses. "
-        "Include disclaimers. Flag emergencies. Be concise."
-    )
-    prompt = "\n".join(
-        f"{'Patient' if m['role'] == 'user' else 'AI Doctor'}: {m['content']}"
-        for m in messages
-        if m["role"] in ("user", "assistant")
-    )
-
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            res = await client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "system": system,
-                    "prompt": prompt + "\nAI Doctor:",
-                    "stream": False,
-                },
-            )
-            if res.status_code != 200:
-                return None
-            return res.json().get("response", "").strip() or None
-    except Exception:
-        return None
-
-
 @app.get("/health")
 async def health():
-    ollama = await _ollama_available()
+    llm_status = await get_llm_status()
     return {
         "status": "ok",
-        "engine": "ollama" if ollama else "python-rules",
-        "ollama_enabled": USE_OLLAMA,
-        "ollama_available": ollama,
+        "engine": llm_status["dynamic_engine"],
+        **llm_status,
     }
 
 
@@ -110,16 +62,15 @@ async def health():
 async def chat(req: ChatRequest):
     payload = [m.model_dump() for m in req.messages]
 
-    ollama_reply = await _ollama_chat(payload)
-    if ollama_reply:
-        return ChatResponse(reply=ollama_reply, engine="ollama")
+    dynamic = await dynamic_chat(payload)
+    if dynamic:
+        reply, engine, lang, vlang = dynamic
+        return ChatResponse(reply=reply, engine=engine, language=lang, voice_lang=vlang)
 
     reply, lang = bot.chat(payload)
-    from i18n import voice_lang_for
-
     return ChatResponse(
         reply=reply,
-        engine="python-rules",
+        engine="smart-rules",
         language=lang,
         voice_lang=voice_lang_for(lang),
     )
@@ -129,7 +80,7 @@ async def chat(req: ChatRequest):
 async def summary(req: ChatRequest):
     payload = [m.model_dump() for m in req.messages]
     result = bot.summarize(payload)
-    result["engine"] = "python-rules"
+    result["engine"] = "smart-rules"
     return SummaryResponse(**result)
 
 

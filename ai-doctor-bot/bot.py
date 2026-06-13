@@ -343,10 +343,18 @@ class AiDoctorBot:
                 f"{t('emergency_footer', lang)}\n\n{t('disclaimer', lang)}"
             ), lang
 
+        from intents import classify_intent, get_conversational_response
+
+        intent = classify_intent(last_user, messages)
+        if intent != "medical":
+            conv = get_conversational_response(intent, lang, messages)
+            if conv:
+                return conv, lang
+
         matched = _match_rules(user_text)
         if not matched:
-            body = _handle_no_symptoms(user_messages, lang)
-            return f"{body}\n\n⚠️ {t('disclaimer', lang)}", lang
+            conv = get_conversational_response("unclear", lang, messages)
+            return conv or f"{t('no_symptoms_first', lang)}\n\n⚠️ {t('disclaimer', lang)}", lang
 
         question = _next_question(matched, full_text, lang)
         if question and len(user_messages) <= 3:
