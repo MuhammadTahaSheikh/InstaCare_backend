@@ -5,12 +5,15 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_ROOT="$(cd "$ROOT/.." && pwd)"
 cd "$ROOT"
 
-# Load backend .env (GROQ_API_KEY, etc.) for dynamic LLM
+# Load AI Doctor / LLM vars from backend .env (do not source whole file — SMTP values break bash)
 if [[ -f "$BACKEND_ROOT/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$BACKEND_ROOT/.env"
-  set +a
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    if [[ "$line" =~ ^(GROQ_|OLLAMA_|AI_DOCTOR_|OPENAI_) ]]; then
+      export "$line"
+    fi
+  done < "$BACKEND_ROOT/.env"
 fi
 
 if [[ ! -d venv ]]; then
