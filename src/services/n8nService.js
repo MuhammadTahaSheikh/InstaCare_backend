@@ -36,3 +36,13 @@ export async function notifyN8n(payload) {
 
   return postWebhook(url, payload);
 }
+
+export async function notifyAiDoctorComplete(payload) {
+  const url = process.env.N8N_AI_DOCTOR_WEBHOOK_URL;
+  if (!url) {
+    console.log('[n8n] N8N_AI_DOCTOR_WEBHOOK_URL not set — skipping', payload.event);
+    return { skipped: true };
+  }
+
+  return postWebhook(url, payload);
+}

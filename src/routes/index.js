@@ -11,7 +11,9 @@ import * as medicines from '../controllers/medicineController.js';
 import * as admin from '../controllers/adminController.js';
 import * as payments from '../controllers/paymentController.js';
 import * as consultation from '../controllers/consultationController.js';
+import * as aiDoctor from '../controllers/aiDoctorController.js';
 import { requireWebhookSecret } from '../middleware/webhookAuth.js';
+import { optionalAuthenticate } from '../middleware/optionalAuth.js';
 
 const adminOnly = [authenticate, requireRole('admin')];
 
@@ -89,6 +91,14 @@ router.patch('/admin/orders/:id/status', ...adminOnly, admin.updateOrderStatus);
 router.post('/admin/medicines', ...adminOnly, admin.createMedicine);
 router.patch('/admin/medicines/:id', ...adminOnly, admin.updateMedicine);
 router.delete('/admin/medicines/:id', ...adminOnly, admin.deleteMedicine);
+
+// AI Doctor (isolated feature — optional auth for guests + logged-in users)
+router.get('/ai-doctor/status', aiDoctor.getStatus);
+router.post('/ai-doctor/sessions', optionalAuthenticate, aiDoctor.createSession);
+router.get('/ai-doctor/sessions/:id', optionalAuthenticate, aiDoctor.getSession);
+router.post('/ai-doctor/sessions/:id/messages', optionalAuthenticate, aiDoctor.sendMessage);
+router.post('/ai-doctor/sessions/:id/complete', optionalAuthenticate, aiDoctor.completeSession);
+router.get('/ai-doctor/sessions/:id/pdf', optionalAuthenticate, aiDoctor.downloadPdf);
 
 // Misc
 router.get('/specialties', misc.getSpecialties);

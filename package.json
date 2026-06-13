@@ -11,6 +11,7 @@
     "db:migrate:email": "node database/migrate-email-verification.js",
     "db:migrate:payments": "node database/migrate-payments-jazzcash.js",
     "db:migrate:payment-otp": "node database/migrate-payment-otp.js",
+    "db:migrate:ai-doctor": "node database/migrate-ai-doctor.js",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.11.0",
     "nodemailer": "^8.0.11",
+    "pdfkit": "^0.19.1",
     "socket.io": "^4.8.3"
   }
 }

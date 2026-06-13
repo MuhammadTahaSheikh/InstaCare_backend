@@ -26,6 +26,7 @@ echo "==> Running database migrations..."
 npm run db:migrate:email
 npm run db:migrate:payments
 npm run db:migrate:payment-otp
+npm run db:migrate:ai-doctor
 
 echo "==> Restarting PM2..."
 if pm2 describe instacare-api >/dev/null 2>&1; then

@@ -1,0 +1,104 @@
+{
+  "name": "BestechCare AI Doctor Complete",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-doctor-complete",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-ai-doctor",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "ai-doctor-complete"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.event }}",
+              "operation": "equal",
+              "value2": "ai_doctor.completed"
+            }
+          ]
+        }
+      },
+      "id": "if-completed",
+      "name": "Consultation Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.pdf_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "fetch-pdf",
+      "name": "Fetch PDF Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 220]
+    },
+    {
+      "parameters": {
+        "fromEmail": "hello@bestechcare.pk",
+        "toEmail": "={{ $json.body.user_email || 'patient@example.com' }}",
+        "subject": "Your BestechCare AI Doctor Consultation Report",
+        "text": "={{ 'Your AI Doctor consultation is complete.\\n\\nSummary: ' + ($json.body.summary?.summary || 'See attached PDF.') + '\\n\\nPlease consult a qualified doctor for professional evaluation.\\n\\n' + ($json.body.frontend_url || '') + '/ai-doctor' }}",
+        "options": {
+          "attachments": "={{ [{ name: 'consultation-report.pdf', data: $binary.data }] }}"
+        }
+      },
+      "id": "send-email",
+      "name": "Email PDF to Patient",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [940, 220],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "BestechCare SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "noop",
+      "name": "Ignore Other Events",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [700, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Consultation Completed?", "type": "main", "index": 0 }]]
+    },
+    "Consultation Completed?": {
+      "main": [
+        [{ "node": "Fetch PDF Report", "type": "main", "index": 0 }],
+        [{ "node": "Ignore Other Events", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch PDF Report": {
+      "main": [[{ "node": "Email PDF to Patient", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
