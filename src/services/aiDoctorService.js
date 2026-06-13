@@ -1,6 +1,7 @@
 import {
   fetchRecommendedDoctors,
   sanitizeBotReply,
+  stripInventedDoctorNames,
   appendDoctorRecommendations,
 } from './aiDoctorDoctors.js';
 
@@ -129,15 +130,20 @@ export async function generateChatReply(conversationMessages, citySlug = 'lahore
   if (health.available) {
     const data = await callPythonBot('/chat', { messages: payload });
     let reply = sanitizeBotReply(data.reply);
+    if (data.suggest_doctors) {
+      reply = stripInventedDoctorNames(reply);
+    }
     let recommendedDoctors = [];
     const roman = (data.voice_lang || '').startsWith('hi') || data.language === 'ur' && /[a-z]{3,}/i.test(reply) && /\b(hai|hain|aap|mujhe)\b/i.test(reply);
 
-    if (data.suggest_doctors && data.recommended_specialty_slug) {
-      recommendedDoctors = await fetchRecommendedDoctors(data.recommended_specialty_slug, citySlug);
+    if (data.suggest_doctors) {
+      const specialtySlug = data.recommended_specialty_slug || 'general-physician';
+      recommendedDoctors = await fetchRecommendedDoctors(specialtySlug, citySlug);
       reply = appendDoctorRecommendations(reply, recommendedDoctors, {
         language: data.language || 'en',
         roman: Boolean(roman),
-        specialtySlug: data.recommended_specialty_slug,
+        specialtySlug,
+        citySlug,
       });
     }
 
