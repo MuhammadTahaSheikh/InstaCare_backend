@@ -77,8 +77,14 @@ async def chat(req: ChatRequest):
         reply, engine, lang, vlang = dynamic
         return ChatResponse(reply=reply, engine=engine, language=lang, voice_lang=vlang)
 
+    # Groq failed or wrong language — reliable composer enforces language correctly
     if not analysis:
-        return ChatResponse(reply=compose_reply({"kind": "opening", "lang": "en", "roman": False}), engine="dynamic-composer")
+        return ChatResponse(
+            reply=compose_reply({"kind": "opening", "lang": "en", "roman": False}),
+            engine="dynamic-composer",
+            language="en",
+            voice_lang="en-US",
+        )
 
     reply = compose_reply(analysis)
     return ChatResponse(

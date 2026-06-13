@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from i18n import Lang, resolve_reply_style, voice_lang_for
+from i18n import Lang, language_lock_instruction, reply_matches_style, resolve_reply_style, voice_lang_for
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
@@ -19,18 +19,13 @@ SYSTEM_PROMPT = """You are BestechCare AI Doctor — a friendly, dynamic health 
 
 CRITICAL RULES:
 - You are an AI assistant, NOT a licensed human doctor. Say this clearly if asked.
-- Reply in the SAME language AND script the patient uses:
-  * Roman Urdu (Latin letters like "kase ha ap", "mjhe sar dard") → reply in Roman Urdu only
-  * Urdu script → reply in Urdu script
-  * English → reply in English
-- Answer the patient's ACTUAL latest message first — do not ignore greetings or identity questions.
-- Be conversational, warm, and natural like ChatGPT — never robotic or copy-pasted.
-- If they greet you, greet back naturally before asking about symptoms.
-- For health symptoms: ask 1-2 relevant follow-ups, suggest possible causes with disclaimers, OTC options in Pakistan.
+- ALWAYS follow the LANGUAGE LOCK instruction — it overrides chat history language.
+- Answer the patient's LATEST message first — be natural like ChatGPT.
+- For health symptoms: ask 1-2 relevant follow-ups, suggest OTC options in Pakistan with disclaimers.
 - Never give a definitive diagnosis. Recommend a real doctor for serious issues.
 - Flag emergencies (chest pain, breathing difficulty, stroke) urgently.
-- Keep responses concise (under 180 words unless giving a summary).
-- End health advice with: always consult a qualified doctor for professional evaluation."""
+- Keep responses concise (under 180 words).
+- End health advice with a brief doctor disclaimer."""
 
 
 def _analysis_context(analysis: dict[str, Any] | None) -> str:
@@ -38,7 +33,6 @@ def _analysis_context(analysis: dict[str, Any] | None) -> str:
         return ""
     lines = [
         "INTERNAL CONTEXT (use to inform your reply, do not repeat verbatim):",
-        f"- Reply language: {'Roman Urdu (Latin script)' if analysis.get('roman') else analysis.get('lang', 'en')}",
         f"- Patient intent: {analysis.get('intent', 'unknown')}",
         f"- Latest patient message: {analysis.get('last_user', '')}",
     ]
@@ -47,10 +41,31 @@ def _analysis_context(analysis: dict[str, Any] | None) -> str:
     if analysis.get("next_question"):
         lines.append(f"- Useful follow-up to ask: {analysis['next_question']}")
     if analysis.get("guidance_ready"):
-        lines.append("- Enough info collected — provide informational guidance with OTC, precautions, specialist.")
+        lines.append("- Provide informational guidance with OTC medicines, precautions, when to see a specialist.")
     if analysis.get("kind") == "emergency":
         lines.append(f"- EMERGENCY: {analysis.get('emergency_text', '')}")
     return "\n".join(lines)
+
+
+def _build_llm_messages(
+    messages: list[dict],
+    analysis: dict[str, Any] | None,
+    lang: Lang,
+    roman: bool,
+) -> list[dict]:
+    """Build chat messages with strict language lock on the latest turn."""
+    chat_messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    context = _analysis_context(analysis)
+    if context:
+        chat_messages.append({"role": "system", "content": context})
+
+    # Keep recent history only — reduces language drift from old Urdu messages
+    recent = [m for m in messages if m.get("role") in ("user", "assistant")][-8:]
+    chat_messages.extend({"role": m["role"], "content": m["content"]} for m in recent)
+
+    lock = language_lock_instruction(lang, roman=roman)
+    chat_messages.append({"role": "system", "content": lock})
+    return chat_messages
 
 
 async def groq_available() -> bool:
@@ -68,17 +83,16 @@ async def ollama_available() -> bool:
         return False
 
 
-async def _call_groq(messages: list[dict], analysis: dict[str, Any] | None = None) -> str | None:
+async def _call_groq(
+    messages: list[dict],
+    analysis: dict[str, Any] | None,
+    lang: Lang,
+    roman: bool,
+) -> str | None:
     if not GROQ_API_KEY:
         return None
 
-    context = _analysis_context(analysis)
-    chat_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    if context:
-        chat_messages.append({"role": "system", "content": context})
-    for m in messages:
-        if m["role"] in ("user", "assistant"):
-            chat_messages.append({"role": m["role"], "content": m["content"]})
+    chat_messages = _build_llm_messages(messages, analysis, lang, roman)
 
     try:
         async with httpx.AsyncClient(timeout=45.0) as client:
@@ -91,27 +105,40 @@ async def _call_groq(messages: list[dict], analysis: dict[str, Any] | None = Non
                 json={
                     "model": GROQ_MODEL,
                     "messages": chat_messages,
-                    "temperature": 0.75,
+                    "temperature": 0.55,
                     "max_tokens": 700,
                 },
             )
             if res.status_code != 200:
                 return None
             data = res.json()
-            return data["choices"][0]["message"]["content"].strip()
+            reply = data["choices"][0]["message"]["content"].strip()
+            if not reply_matches_style(reply, lang, roman=roman):
+                return None
+            return reply
     except Exception:
         return None
 
 
-async def _call_ollama(messages: list[dict], analysis: dict[str, Any] | None = None) -> str | None:
+async def _call_ollama(
+    messages: list[dict],
+    analysis: dict[str, Any] | None,
+    lang: Lang,
+    roman: bool,
+) -> str | None:
     if not await ollama_available():
         return None
 
+    lock = language_lock_instruction(lang, roman=roman)
     context = _analysis_context(analysis)
+    system = SYSTEM_PROMPT + "\n\n" + lock
+    if context:
+        system += "\n\n" + context
+
+    recent = [m for m in messages if m.get("role") in ("user", "assistant")][-8:]
     prompt = "\n".join(
         f"{'Patient' if m['role'] == 'user' else 'AI Doctor'}: {m['content']}"
-        for m in messages
-        if m["role"] in ("user", "assistant")
+        for m in recent
     )
 
     try:
@@ -120,14 +147,17 @@ async def _call_ollama(messages: list[dict], analysis: dict[str, Any] | None = N
                 f"{OLLAMA_URL}/api/generate",
                 json={
                     "model": OLLAMA_MODEL,
-                    "system": SYSTEM_PROMPT + ("\n\n" + context if context else ""),
+                    "system": system,
                     "prompt": prompt + "\nAI Doctor:",
                     "stream": False,
                 },
             )
             if res.status_code != 200:
                 return None
-            return res.json().get("response", "").strip() or None
+            reply = res.json().get("response", "").strip() or None
+            if reply and not reply_matches_style(reply, lang, roman=roman):
+                return None
+            return reply
     except Exception:
         return None
 
@@ -147,11 +177,11 @@ async def dynamic_chat(
     else:
         lang, roman = "en", False
 
-    reply = await _call_groq(messages, analysis)
+    reply = await _call_groq(messages, analysis, lang, roman)
     if reply:
         return reply, "groq", lang, voice_lang_for(lang, roman=roman)
 
-    reply = await _call_ollama(messages, analysis)
+    reply = await _call_ollama(messages, analysis, lang, roman)
     if reply:
         return reply, "ollama", lang, voice_lang_for(lang, roman=roman)
 

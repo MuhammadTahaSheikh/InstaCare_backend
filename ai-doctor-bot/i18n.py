@@ -338,17 +338,67 @@ def reply_in_roman_urdu(text: str) -> bool:
 
 def resolve_reply_style(last_user: str, messages: list[dict]) -> tuple[Lang, bool]:
     """Reply language/script follows the patient's latest message."""
+    if URDU_SCRIPT_RE.search(last_user):
+        return "ur", False
+    if _looks_english(last_user) and not _looks_roman_urdu(last_user):
+        return "en", False
     if reply_in_roman_urdu(last_user):
         return "ur", True
     detected = detect_language_from_text(last_user)
     if detected == "en":
         return "en", False
     if detected == "ur":
-        return "ur", URDU_SCRIPT_RE.search(last_user) is not None
+        return "ur", False
     if detected:
         return detected, False
-    hist = resolve_language(messages)
-    return hist, False
+    return resolve_language(messages), False
+
+
+def language_lock_instruction(lang: Lang, *, roman: bool = False) -> str:
+    """Hard instruction appended for LLM — must match latest user message language."""
+    if roman:
+        return (
+            "LANGUAGE LOCK (mandatory): Write your ENTIRE reply in Roman Urdu using Latin letters only "
+            "(e.g. 'Main theek hoon', 'Aap ko kya alamat hain?'). Do NOT reply in English."
+        )
+    if lang == "en":
+        return (
+            "LANGUAGE LOCK (mandatory): Write your ENTIRE reply in ENGLISH only. "
+            "Do NOT use Urdu, Roman Urdu, or Hindi — even if earlier chat messages were in Urdu."
+        )
+    if lang == "ur":
+        return (
+            "LANGUAGE LOCK (mandatory): Write your ENTIRE reply in Urdu script (Nastaliq) only. "
+            "Do NOT use English or Roman Urdu."
+        )
+    if lang == "hi":
+        return "LANGUAGE LOCK (mandatory): Write your ENTIRE reply in Hindi (Devanagari) only."
+    return f"LANGUAGE LOCK (mandatory): Reply in {lang} only."
+
+
+def reply_matches_style(reply: str, lang: Lang, *, roman: bool = False) -> bool:
+    """Return False when LLM reply uses the wrong language/script."""
+    if not reply or not reply.strip():
+        return False
+    if roman:
+        if URDU_SCRIPT_RE.search(reply):
+            return False
+        # Roman reply should have some roman urdu markers OR be Latin without being pure English-only short
+        return _score_roman_urdu(reply) >= 1 or bool(ROMAN_URDU_GREETING_RE.search(reply))
+    if lang == "en":
+        if URDU_SCRIPT_RE.search(reply):
+            return False
+        lower = f" {reply.lower()} "
+        roman_hits = _score_roman_urdu(reply)
+        # Reject if reply looks like Roman Urdu (multiple markers or common urdu words)
+        urdu_words = [" mujhe ", " aap ", " ap ", " hai ", " hain ", " kya ", " nahi ", " dard ", " bukhar "]
+        word_hits = sum(1 for w in urdu_words if w in lower)
+        if roman_hits >= 2 or word_hits >= 2:
+            return False
+        return True
+    if lang == "ur" and not roman:
+        return bool(URDU_SCRIPT_RE.search(reply))
+    return True
 
 
 def _score_roman_urdu(text: str) -> int:
@@ -360,6 +410,8 @@ ENGLISH_MARKERS = [
     "hello", "hi ", "hey", "how are you", "good morning", "good evening", "good night",
     "thank you", "thanks", "please", "what is", "what are", "i have", "i am", "i feel",
     "my head", "my stomach", "help me", "can you", "how do", "why do",
+    "not feeling", "feeling well", "feeling unwell", "feel sick", "feel bad",
+    "i'm not", "im not", "no feeling",
 ]
 
 
