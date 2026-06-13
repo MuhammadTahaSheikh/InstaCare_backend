@@ -592,8 +592,7 @@ class AiDoctorBot:
                 base["topic"] = topic_name(matched[0]["id"], lang, roman=roman)
             else:
                 base["recommended_specialty_slug"] = "general-physician"
-            if intent in conversational:
-                return base
+            return base
 
         if intent in conversational:
             return base

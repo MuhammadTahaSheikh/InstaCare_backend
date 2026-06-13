@@ -15,12 +15,14 @@ MEDICINE_ASK_RE = re.compile(
 )
 
 DOCTOR_ASK_RE = re.compile(
-    r"(which|what|recommend|suggest|find|need|book|see|consult).{0,40}(doctor|dr\b|specialist|physician)|"
-    r"(doctor|specialist|physician).{0,30}(help|recommend|suggest|book|consult|for me)|"
+    r"(which|what|recommend|suggest|find|need|book|see|consult|tell|give|list|share|name).{0,50}(doctor|dr\b|specialist|physician|doctors)|"
+    r"(doctor|dr\b|specialist|physician|doctors).{0,40}(help|recommend|suggest|book|consult|for me|name|names|list|in |at |lahore|karachi|islamabad|rawalpindi|multan|faisalabad|peshawar)|"
+    r"(name|names).{0,30}(doctor|dr\b|specialist|doctors)|"
+    r"your doctor|"
     r"bestech\s*care|bestechcare|"
     r"on (the )?platform|"
     r"who should i see|"
-    r"konsa doctor|kaun sa doctor|doctor batao|doctor suggest",
+    r"konsa doctor|kaun sa doctor|doctor batao|doctor suggest|doctor ka naam|doctor ke naam",
     re.I,
 )
 
