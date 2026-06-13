@@ -12,13 +12,14 @@ from i18n import (
     specialty_name,
     t,
     voice_lang_for,
+    detect_language_from_text,
 )
 from knowledge import EMERGENCY_KEYWORDS, SPECIALTY_SLUGS, SYMPTOM_RULES
 
 URDU_EXTRA_KEYWORDS: dict[str, list[str]] = {
     "headache": ["sar dard", "sir dard", "سر درد"],
     "fever": ["bukhar", "بخار", "tap dik"],
-    "cough_cold": ["khansi", "zukam", "کھansi", "گلا"],
+    "cough_cold": ["khansi", "zukam", "کھانسی", "گلا"],
     "stomach": ["pet dard", "پیٹ", "qay", "ishal", "متلی"],
     "skin": ["khujli", "خارش", "danay"],
     "mental": ["pareshani", "tension", "udaasi", "پریشانی"],
@@ -36,11 +37,11 @@ URDU_QUESTIONS: dict[str, dict[str, str]] = {
     "fever": {
         "duration": "بخار کتنے دنوں سے ہے؟",
         "temperature": "درجہ حرارت ناپا؟ کتنا تھا؟",
-        "other": "کھansi، گلے میں درد، جسم درد یا خارش بھی ہے؟",
+        "other": "کھانسی، گلے میں درد، جسم درد یا خارش بھی ہے؟",
     },
     "cough_cold": {
         "duration": "یہ علامات کب سے ہیں؟",
-        "type": "کھansi خشک ہے یا بلغم کے ساتھ؟",
+        "type": "کھانسی خشک ہے یا بلغم کے ساتھ؟",
         "breathing": "سانس لینے میں مشکل یا گھونگھٹ؟",
     },
     "stomach": {
@@ -90,7 +91,7 @@ EN_FOLLOWUPS = [
 TOPIC_NAMES = {
     "headache": {"en": "headache", "ur": "سر درد", "hi": "सिरदर्द", "ar": "صداع"},
     "fever": {"en": "fever", "ur": "بخار", "hi": "बुखार", "ar": "حمى"},
-    "cough_cold": {"en": "cold/cough", "ur": "زکام/کھansi", "hi": "खांसी", "ar": "سعال"},
+    "cough_cold": {"en": "cold/cough", "ur": "زکام/کھانسی", "hi": "खांसी", "ar": "سعال"},
     "stomach": {"en": "stomach issues", "ur": "پیٹ کا مسئلہ", "hi": "पेट", "ar": "معدة"},
     "skin": {"en": "skin issues", "ur": "جلد کا مسئلہ", "hi": "त्वचा", "ar": "جلد"},
     "mental": {"en": "mental health", "ur": "ذہنی صحت", "hi": "मानसिक", "ar": "نفسية"},
@@ -98,9 +99,64 @@ TOPIC_NAMES = {
     "urinary": {"en": "urinary symptoms", "ur": "پیشاب کی تکلیف", "hi": "पेशाब", "ar": "بول"},
 }
 
+GREETING_RE = re.compile(
+    r"(hello|hi\b|hey\b|salam|assalam|adaab|good morning|good evening|good afternoon|"
+    r"how are you|how r u|kaise ho|kya hal|kaisa hai|آپ کیسے|کیسے ہو|ہیلو|السلام|سلام)",
+    re.I,
+)
+
+THANKS_RE = re.compile(
+    r"(thank you|thanks|shukriya|shukria|جزاک|شکریہ|dhanyavad|شكر)",
+    re.I,
+)
+
 
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.lower().strip())
+
+
+def _is_greeting(text: str) -> bool:
+    normalized = _normalize(text)
+    if GREETING_RE.search(normalized):
+        return True
+    # Short messages that are only greetings
+    words = normalized.split()
+    if len(words) <= 5 and any(w in normalized for w in ["hello", "hi", "hey", "salam", "کیسے", "ہیلو"]):
+        return True
+    return False
+
+
+def _is_thanks(text: str) -> bool:
+    return bool(THANKS_RE.search(text))
+
+
+def _has_medical_intent(text: str) -> bool:
+    """True if message likely describes a health concern, not just chitchat."""
+    if _match_rules(text):
+        return True
+    medical_words = [
+        "pain", "hurt", "ache", "fever", "cough", "vomit", "nausea", "rash", "symptom",
+        "dard", "bukhar", "khansi", "takleef", "beemar", "medicine", "doctor", "sick",
+        "ill", "problem", "issue", "feel", "swelling", "bleeding", "infection",
+        "bukhar", "sar", "pet", "pait", "تکلیف", "درد", "بخار", "علامات",
+    ]
+    normalized = _normalize(text)
+    return any(w in normalized for w in medical_words)
+
+
+def _handle_no_symptoms(user_messages: list[dict], lang: Lang) -> str:
+    last = user_messages[-1]["content"]
+
+    if _is_greeting(last):
+        return t("greeting_reply", lang)
+
+    if _is_thanks(last):
+        return t("thanks_reply", lang)
+
+    if len(user_messages) == 1:
+        return t("no_symptoms_first", lang)
+
+    return t("unclear_reply", lang)
 
 
 def _all_user_text(messages: list[dict]) -> str:
@@ -269,6 +325,8 @@ class AiDoctorBot:
             return t("opening", lang), lang
 
         last_user = user_messages[-1]["content"]
+        lang = detect_language_from_text(last_user) or resolve_language(messages)
+
         switch = is_language_switch_request(last_user)
         if switch:
             lang = switch
@@ -287,7 +345,7 @@ class AiDoctorBot:
 
         matched = _match_rules(user_text)
         if not matched:
-            body = t("no_symptoms_first", lang) if len(user_messages) == 1 else t("no_symptoms_followup", lang)
+            body = _handle_no_symptoms(user_messages, lang)
             return f"{body}\n\n⚠️ {t('disclaimer', lang)}", lang
 
         question = _next_question(matched, full_text, lang)

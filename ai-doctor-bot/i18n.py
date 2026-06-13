@@ -104,10 +104,40 @@ STRINGS: dict[str, dict] = {
         ),
     },
     "no_symptoms_followup": {
-        "en": "Could you describe symptoms (fever, headache, stomach pain, cough)?",
-        "ur": "علامات بتائیں (بخار، سر درد، پیٹ درد، کھansi)۔",
-        "hi": "लक्षण बताएं (बुखार, सिरदर्द, पेट दर्द)।",
-        "ar": "صف الأعراض (حمى، صداع، ألم بطن).",
+        "en": "I'm here to help with health concerns. Please tell me what symptoms you have — for example fever, headache, cough, or stomach pain.",
+        "ur": "میں آپ کی صحت میں مدد کے لیے یہاں ہوں۔ براہ کرم اپنی علامات بتائیں — جیسے بخار، سر درد، کھانسی، یا پیٹ درد۔",
+        "hi": "मैं स्वास्थ्य में मदद के लिए यहाँ हूँ। अपने लक्षण बताएं — जैसे बुखार, सिरदर्द, खांसी।",
+        "ar": "أنا هنا للمساعدة. صف أعراضك — مثل الحمى، الصداع، السعال.",
+    },
+    "greeting_reply": {
+        "en": (
+            "Hello! I'm doing well, thank you for asking. I'm your BestechCare AI Doctor assistant.\n\n"
+            "How can I help you today? Please describe any symptoms or health concern you're experiencing."
+        ),
+        "ur": (
+            "وعلیکم السلام! میں ٹھیک ہوں، پوچھنے کا شکریہ۔ میں BestechCare کا AI Doctor ہوں.\n\n"
+            "آج آپ کو کیا علامات یا صحت کا مسئلہ ہے؟ براہ کرم تفصیل سے بتائیں."
+        ),
+        "hi": (
+            "नमस्ते! मैं ठीक हूँ, धन्यवाद। मैं BestechCare AI Doctor हूँ.\n\n"
+            "आज आपको क्या लक्षण हैं? कृपया बताएं."
+        ),
+        "ar": (
+            "مرحباً! أنا بخير، شكراً. أنا مساعد BestechCare AI Doctor.\n\n"
+            "ما الأعراض التي تعاني منها اليوم؟"
+        ),
+    },
+    "thanks_reply": {
+        "en": "You're welcome! Is there anything else about your health you'd like to discuss?",
+        "ur": "خوش آمدید! کیا صحت کے بارے میں کuch aur poochna hai?",
+        "hi": "आपका स्वागत है! क्या और कुछ पूछना है?",
+        "ar": "عفواً! هل تريد مناقشة أي شيء آخر?",
+    },
+    "unclear_reply": {
+        "en": "I want to make sure I help you correctly. Could you describe your main symptom or how you're feeling physically?",
+        "ur": "میں صحیح مدد کرنا چاہتا ہوں۔ براہ کرم اپنی اصل علامت یا جسمانی تکلیف بیان کریں۔",
+        "hi": "मैं सही मदद करना चाहता हूँ। अपना मुख्य लक्षण बताएं।",
+        "ar": "أريد مساعدتك بشكل صحيح. صف عرضك الرئيسي.",
     },
     "guidance_intro": {
         "en": "Thank you. Here is **informational guidance** (not a diagnosis):",
@@ -174,7 +204,7 @@ STRINGS: dict[str, dict] = {
 TOPIC_NAMES: dict[str, dict[Lang, str]] = {
     "headache": {"en": "headache", "ur": "سر درد", "hi": "सिरदर्द", "ar": "صداع"},
     "fever": {"en": "fever", "ur": "بخار", "hi": "बुखार", "ar": "حمى"},
-    "cough_cold": {"en": "cold/cough", "ur": "زکام/کھansi", "hi": "खांसी/सर्दी", "ar": "سعال/برد"},
+    "cough_cold": {"en": "cold/cough", "ur": "زکام/کھانسی", "hi": "खांसी/सर्दी", "ar": "سعال/برد"},
     "stomach": {"en": "stomach issues", "ur": "پیٹ کا مسئلہ", "hi": "पेट की समस्या", "ar": "معدة"},
     "skin": {"en": "skin issues", "ur": "جلد کا مسئلہ", "hi": "त्वचा", "ar": "جلد"},
     "mental": {"en": "mental health", "ur": "ذہنی صحت", "hi": "मानसिक स्वास्थ्य", "ar": "صحة نفسية"},
@@ -209,6 +239,18 @@ def _score_roman_urdu(text: str) -> int:
     return sum(1 for m in ROMAN_URDU_MARKERS if m in lower)
 
 
+ENGLISH_MARKERS = [
+    "hello", "hi ", "hey", "how are you", "good morning", "good evening", "good night",
+    "thank you", "thanks", "please", "what is", "what are", "i have", "i am", "i feel",
+    "my head", "my stomach", "help me", "can you", "how do", "why do",
+]
+
+
+def _looks_english(text: str) -> bool:
+    lower = f" {text.lower()} "
+    return any(m in lower for m in ENGLISH_MARKERS)
+
+
 def detect_language_from_text(text: str) -> Lang | None:
     if not text or not text.strip():
         return None
@@ -221,24 +263,37 @@ def detect_language_from_text(text: str) -> Lang | None:
         if pattern.search(text):
             return lang
 
-    score = _score_roman_urdu(text)
-    if score >= 2:
+    lower = text.lower()
+    urdu_score = _score_roman_urdu(text)
+
+    # Latin script: prefer English when clearly English and not Roman Urdu
+    if _looks_english(text) and urdu_score == 0:
+        return "en"
+
+    if urdu_score >= 2:
         return "ur"
-    if score >= 1:
+    if urdu_score >= 1 and not _looks_english(text):
         return "ur"
+
+    # Default Latin script to English (Pakistan app, many users type English)
+    if re.search(r"[a-zA-Z]", text):
+        return "en"
 
     return None
 
 
 def resolve_language(messages: list[dict]) -> Lang:
-    lang: Lang = "en"
-    for msg in messages:
-        if msg.get("role") != "user":
-            continue
+    """Use the most recent user message to determine reply language."""
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    if not user_messages:
+        return "en"
+
+    for msg in reversed(user_messages):
         detected = detect_language_from_text(msg.get("content", ""))
         if detected:
-            lang = detected
-    return lang
+            return detected
+
+    return "en"
 
 
 def is_language_switch_request(text: str) -> Lang | None:
