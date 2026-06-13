@@ -1,4 +1,9 @@
+import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
+
+function toSlug(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
 
 export async function getStats(req, res) {
   try {
@@ -93,6 +98,61 @@ export async function verifyDoctor(req, res) {
   }
 }
 
+export async function createDoctor(req, res) {
+  const conn = await pool.getConnection();
+  try {
+    const {
+      name, email, password, phone, city_id,
+      specialty_id, hospital_id, qualification, experience_years,
+      consultation_fee, online_consultation, in_clinic, bio, is_verified,
+    } = req.body;
+
+    if (!name || !email || !password || !specialty_id) {
+      return res.status(400).json({ error: 'Name, email, password, and specialty are required' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const [existing] = await conn.query('SELECT id FROM users WHERE email = ?', [normalizedEmail]);
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
+
+    await conn.beginTransaction();
+    const hashed = await bcrypt.hash(password, 10);
+    const [userResult] = await conn.query(
+      `INSERT INTO users (name, email, password, phone, role, city_id, email_verified)
+       VALUES (?, ?, ?, ?, 'doctor', ?, TRUE)`,
+      [name, normalizedEmail, hashed, phone || null, city_id || null]
+    );
+
+    const [doctorResult] = await conn.query(
+      `INSERT INTO doctors (user_id, specialty_id, hospital_id, qualification, experience_years,
+        consultation_fee, online_consultation, in_clinic, bio, is_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userResult.insertId,
+        specialty_id,
+        hospital_id || null,
+        qualification || null,
+        experience_years || 0,
+        consultation_fee || 0,
+        online_consultation !== false,
+        in_clinic !== false,
+        bio || null,
+        is_verified !== false,
+      ]
+    );
+
+    await conn.commit();
+    res.status(201).json({ id: doctorResult.insertId, user_id: userResult.insertId });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+}
+
 export async function getAllHospitals(req, res) {
   try {
     const [hospitals] = await pool.query(
@@ -110,6 +170,86 @@ export async function verifyHospital(req, res) {
     const { is_verified } = req.body;
     await pool.query('UPDATE hospitals SET is_verified = ? WHERE id = ?', [!!is_verified, req.params.id]);
     res.json({ message: 'Hospital updated' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function createHospital(req, res) {
+  try {
+    const { name, slug, description, address, city_id, phone, is_verified } = req.body;
+    if (!name || !city_id) {
+      return res.status(400).json({ error: 'Name and city are required' });
+    }
+
+    const hospitalSlug = slug || toSlug(name);
+    const [result] = await pool.query(
+      `INSERT INTO hospitals (name, slug, description, address, city_id, phone, is_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [name, hospitalSlug, description || null, address || null, city_id, phone || null, is_verified !== false]
+    );
+    res.status(201).json({ id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getAllLabs(req, res) {
+  try {
+    const [labs] = await pool.query(
+      `SELECT l.*, c.name AS city_name FROM labs l
+       JOIN cities c ON l.city_id = c.id ORDER BY l.name`
+    );
+    res.json(labs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function createLab(req, res) {
+  try {
+    const { name, slug, description, city_id, phone, discount_percent } = req.body;
+    if (!name || !city_id) {
+      return res.status(400).json({ error: 'Name and city are required' });
+    }
+
+    const labSlug = slug || toSlug(name);
+    const [result] = await pool.query(
+      `INSERT INTO labs (name, slug, description, city_id, phone, discount_percent)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [name, labSlug, description || null, city_id, phone || null, discount_percent || 0]
+    );
+    res.status(201).json({ id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getAllLabTests(req, res) {
+  try {
+    const [tests] = await pool.query(
+      `SELECT t.*, l.name AS lab_name FROM lab_tests t
+       JOIN labs l ON t.lab_id = l.id ORDER BY l.name, t.name`
+    );
+    res.json(tests);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function createLabTest(req, res) {
+  try {
+    const { lab_id, name, description, price, discounted_price } = req.body;
+    if (!lab_id || !name || price == null) {
+      return res.status(400).json({ error: 'Lab, name, and price are required' });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO lab_tests (lab_id, name, description, price, discounted_price)
+       VALUES (?, ?, ?, ?, ?)`,
+      [lab_id, name, description || null, price, discounted_price || null]
+    );
+    res.status(201).json({ id: result.insertId });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
