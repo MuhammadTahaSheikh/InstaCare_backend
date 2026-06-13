@@ -28,6 +28,13 @@ npm run db:migrate:payments
 npm run db:migrate:payment-otp
 npm run db:migrate:ai-doctor
 
+echo "==> Setting up AI Doctor Python bot..."
+chmod +x ai-doctor-bot/start.sh
+if [[ ! -d ai-doctor-bot/venv ]]; then
+  python3 -m venv ai-doctor-bot/venv
+fi
+ai-doctor-bot/venv/bin/pip install -q -r ai-doctor-bot/requirements.txt
+
 echo "==> Restarting PM2..."
 if pm2 describe instacare-api >/dev/null 2>&1; then
   pm2 reload ecosystem.config.cjs --update-env

@@ -1,68 +1,77 @@
-const SPECIALTY_SLUGS = [
-  'gynecologist',
-  'dentist',
-  'dermatologist',
-  'cardiologist',
-  'neurologist',
-  'ent-specialist',
-  'pediatrician',
-  'gastroenterologist',
-  'general-physician',
-  'plastic-surgeon',
-  'urologist',
-  'psychiatrist',
-];
+const TIMEOUT_MS = 30000;
 
-const SYSTEM_PROMPT = `You are BestechCare AI Doctor — a helpful health guidance assistant for users in Pakistan.
+const BOT_URL = (process.env.AI_DOCTOR_BOT_URL || 'http://127.0.0.1:5003').replace(/\/$/, '');
 
-IMPORTANT RULES:
-- You are NOT a licensed doctor. Always remind users this is informational guidance only.
-- Ask relevant follow-up questions about symptoms, duration, severity, age, and medical history before giving detailed advice.
-- Never diagnose definitively — suggest possible conditions with clear disclaimers.
-- Recommend over-the-counter medicines available in Pakistan when appropriate; mention generic names and typical dosages with "consult a pharmacist/doctor" disclaimers.
-- Provide precautions, self-care, and lifestyle recommendations.
-- Suggest diagnostic tests or lab work when they seem necessary.
-- Clearly flag emergencies (chest pain, difficulty breathing, severe bleeding, stroke signs, etc.) and urge immediate ER/911-style care.
-- Be empathetic, concise, and use plain language.
-- Do not prescribe controlled substances or antibiotics without emphasizing a real doctor visit is required.
+let botHealthCache = { checkedAt: 0, available: false, engine: null };
 
-During the conversation, gather enough information through questions. Keep responses focused and readable.`;
+async function callPythonBot(path, body) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-const SUMMARY_PROMPT = `Based on the full consultation conversation, produce a final structured report.
+  try {
+    const res = await fetch(`${BOT_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
 
-Respond with ONLY valid JSON (no markdown fences) in this exact shape:
-{
-  "summary": "2-4 paragraph consultation summary",
-  "symptoms_discussed": ["symptom1", "symptom2"],
-  "possible_conditions": [{"name": "...", "likelihood": "low|moderate|high", "note": "disclaimer text"}],
-  "medicines": [{"name": "...", "type": "OTC|prescription", "usage": "...", "precaution": "..."}],
-  "suggested_tests": ["test1"],
-  "precautions": ["precaution1"],
-  "self_care": ["tip1"],
-  "urgent_care_required": false,
-  "urgent_care_reason": null,
-  "recommended_specialty_slug": "general-physician",
-  "disclaimer": "Always consult a qualified doctor for professional evaluation."
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`AI Doctor bot error (${res.status}): ${text.slice(0, 200)}`);
+    }
+
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-For recommended_specialty_slug, use one of: ${SPECIALTY_SLUGS.join(', ')}`;
-
-function getAiConfig() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-
-  if (!apiKey) {
-    return null;
+export async function checkBotHealth(force = false) {
+  const now = Date.now();
+  if (!force && now - botHealthCache.checkedAt < 30000) {
+    return botHealthCache;
   }
 
-  return { apiKey, model, baseUrl };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+
+  try {
+    const res = await fetch(`${BOT_URL}/health`, { signal: controller.signal });
+    if (!res.ok) {
+      botHealthCache = { checkedAt: now, available: false, engine: null };
+      return botHealthCache;
+    }
+    const data = await res.json();
+    botHealthCache = {
+      checkedAt: now,
+      available: data.status === 'ok',
+      engine: data.engine || 'python-rules',
+    };
+    return botHealthCache;
+  } catch {
+    botHealthCache = { checkedAt: now, available: false, engine: null };
+    return botHealthCache;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-async function callChat(messages, { temperature = 0.6, maxTokens = 1200 } = {}) {
-  const config = getAiConfig();
+function getOpenAiConfig() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  return {
+    apiKey,
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    baseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
+  };
+}
+
+async function callOpenAi(messages, { temperature = 0.6, maxTokens = 1200 } = {}) {
+  const config = getOpenAiConfig();
   if (!config) {
-    throw new Error('AI Doctor is not configured. Set OPENAI_API_KEY in backend environment.');
+    throw new Error('OpenAI is not configured.');
   }
 
   const res = await fetch(`${config.baseUrl}/chat/completions`, {
@@ -81,55 +90,103 @@ async function callChat(messages, { temperature = 0.6, maxTokens = 1200 } = {}) 
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`AI request failed (${res.status}): ${body.slice(0, 200)}`);
+    throw new Error(`OpenAI request failed (${res.status}): ${body.slice(0, 200)}`);
   }
 
   const data = await res.json();
   return data.choices?.[0]?.message?.content?.trim() || '';
 }
 
-export async function generateChatReply(conversationMessages) {
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    ...conversationMessages.map((m) => ({ role: m.role, content: m.content })),
-  ];
+const OPENAI_SYSTEM_PROMPT = `You are BestechCare AI Doctor — a helpful health guidance assistant for users in Pakistan.
+You are NOT a licensed doctor. Always include disclaimers. Flag emergencies. Be concise.`;
 
-  return callChat(messages);
+const OPENAI_SUMMARY_PROMPT = `Produce a final consultation report as valid JSON only with keys:
+summary, symptoms_discussed, possible_conditions, medicines, suggested_tests, precautions, self_care,
+urgent_care_required, urgent_care_reason, recommended_specialty_slug, disclaimer`;
+
+export async function generateChatReply(conversationMessages) {
+  const payload = conversationMessages.map((m) => ({ role: m.role, content: m.content }));
+
+  const health = await checkBotHealth();
+  if (health.available) {
+    const data = await callPythonBot('/chat', { messages: payload });
+    return data.reply;
+  }
+
+  if (getOpenAiConfig()) {
+    const messages = [
+      { role: 'system', content: OPENAI_SYSTEM_PROMPT },
+      ...payload,
+    ];
+    return callOpenAi(messages);
+  }
+
+  throw new Error(
+    'AI Doctor bot is not running. Start it with: cd ai-doctor-bot && pip install -r requirements.txt && python app.py'
+  );
 }
 
 export async function generateConsultationSummary(conversationMessages) {
-  const messages = [
-    { role: 'system', content: SUMMARY_PROMPT },
-    {
-      role: 'user',
-      content: conversationMessages
-        .map((m) => `${m.role === 'user' ? 'Patient' : 'AI Doctor'}: ${m.content}`)
-        .join('\n\n'),
-    },
-  ];
+  const payload = conversationMessages.map((m) => ({ role: m.role, content: m.content }));
 
-  const raw = await callChat(messages, { temperature: 0.3, maxTokens: 2000 });
-
-  try {
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-    return JSON.parse(cleaned);
-  } catch {
-    return {
-      summary: raw,
-      symptoms_discussed: [],
-      possible_conditions: [],
-      medicines: [],
-      suggested_tests: [],
-      precautions: [],
-      self_care: [],
-      urgent_care_required: false,
-      urgent_care_reason: null,
-      recommended_specialty_slug: 'general-physician',
-      disclaimer: 'Always consult a qualified doctor for professional evaluation.',
-    };
+  const health = await checkBotHealth();
+  if (health.available) {
+    const data = await callPythonBot('/summary', { messages: payload });
+    const { engine, ...summary } = data;
+    return summary;
   }
+
+  if (getOpenAiConfig()) {
+    const raw = await callOpenAi(
+      [
+        { role: 'system', content: OPENAI_SUMMARY_PROMPT },
+        {
+          role: 'user',
+          content: payload
+            .map((m) => `${m.role === 'user' ? 'Patient' : 'AI Doctor'}: ${m.content}`)
+            .join('\n\n'),
+        },
+      ],
+      { temperature: 0.3, maxTokens: 2000 }
+    );
+
+    try {
+      const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+      return JSON.parse(cleaned);
+    } catch {
+      return {
+        summary: raw,
+        symptoms_discussed: [],
+        possible_conditions: [],
+        medicines: [],
+        suggested_tests: [],
+        precautions: [],
+        self_care: [],
+        urgent_care_required: false,
+        urgent_care_reason: null,
+        recommended_specialty_slug: 'general-physician',
+        disclaimer: 'Always consult a qualified doctor for professional evaluation.',
+      };
+    }
+  }
+
+  throw new Error('AI Doctor bot is not running.');
 }
 
-export function isAiDoctorConfigured() {
-  return Boolean(getAiConfig());
+export async function isAiDoctorConfigured() {
+  const health = await checkBotHealth(true);
+  if (health.available) return true;
+  return Boolean(getOpenAiConfig());
+}
+
+export async function getAiDoctorStatus() {
+  const health = await checkBotHealth(true);
+  const openai = Boolean(getOpenAiConfig());
+
+  return {
+    configured: health.available || openai,
+    engine: health.available ? health.engine : openai ? 'openai' : null,
+    bot_url: BOT_URL,
+    openai_fallback: openai,
+  };
 }

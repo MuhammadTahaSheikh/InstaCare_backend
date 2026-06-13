@@ -4,6 +4,7 @@ import {
   generateChatReply,
   generateConsultationSummary,
   isAiDoctorConfigured,
+  getAiDoctorStatus,
 } from '../services/aiDoctorService.js';
 import { buildConsultationPdf } from '../services/aiDoctorPdfService.js';
 import { notifyAiDoctorComplete } from '../services/n8nService.js';
@@ -84,13 +85,16 @@ async function fetchRecommendedDoctors(specialtySlug, citySlug) {
 }
 
 export async function getStatus(req, res) {
-  res.json({ configured: isAiDoctorConfigured() });
+  const status = await getAiDoctorStatus();
+  res.json(status);
 }
 
 export async function createSession(req, res) {
   try {
-    if (!isAiDoctorConfigured()) {
-      return res.status(503).json({ error: 'AI Doctor is not configured. Contact support.' });
+    if (!(await isAiDoctorConfigured())) {
+      return res.status(503).json({
+        error: 'AI Doctor bot is not running. Start the Python bot service on port 5003.',
+      });
     }
 
     const id = crypto.randomUUID();
