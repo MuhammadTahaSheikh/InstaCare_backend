@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
@@ -10,7 +11,7 @@ from typing import Literal
 
 from bot import bot
 from composer import compose_reply, voice_for_analysis
-from llm import dynamic_chat, get_llm_status
+from llm import dynamic_chat, get_llm_status, sanitize_llm_reply
 
 app = FastAPI(title="BestechCare AI Doctor Bot", version="2.0.0")
 
@@ -29,6 +30,8 @@ class ChatResponse(BaseModel):
     engine: str
     language: str = "en"
     voice_lang: str = "en-US"
+    recommended_specialty_slug: str | None = None
+    suggest_doctors: bool = False
 
 
 class SummaryResponse(BaseModel):
@@ -48,6 +51,34 @@ class SummaryResponse(BaseModel):
     voice_lang: str = "en-US"
 
 
+def _chat_meta(analysis: dict[str, Any] | None) -> dict[str, Any]:
+    if not analysis:
+        return {"recommended_specialty_slug": None, "suggest_doctors": False}
+    slug = analysis.get("recommended_specialty_slug")
+    if not slug and analysis.get("guidance_data"):
+        slug = analysis["guidance_data"].get("specialty")
+    if not slug and analysis.get("matched"):
+        slug = analysis["matched"][0].get("specialty") or analysis["matched"][0].get("id")
+    suggest = bool(analysis.get("suggest_doctors") or analysis.get("guidance_ready"))
+    return {
+        "recommended_specialty_slug": slug,
+        "suggest_doctors": suggest and bool(slug),
+    }
+
+
+def _make_chat_response(reply: str, engine: str, analysis: dict[str, Any] | None) -> ChatResponse:
+    meta = _chat_meta(analysis)
+    lang = analysis.get("lang", "en") if analysis else "en"
+    return ChatResponse(
+        reply=sanitize_llm_reply(reply),
+        engine=engine,
+        language=lang,
+        voice_lang=voice_for_analysis(analysis) if analysis else "en-US",
+        recommended_specialty_slug=meta["recommended_specialty_slug"],
+        suggest_doctors=meta["suggest_doctors"],
+    )
+
+
 @app.get("/health")
 async def health():
     llm_status = await get_llm_status()
@@ -64,35 +95,29 @@ async def chat(req: ChatRequest):
     analysis = bot.analyze(payload)
 
     if analysis and analysis.get("kind") == "emergency":
-        reply = compose_reply(analysis)
-        return ChatResponse(
-            reply=reply,
-            engine="dynamic-composer",
-            language=analysis["lang"],
-            voice_lang=voice_for_analysis(analysis),
-        )
+        return _make_chat_response(compose_reply(analysis), "dynamic-composer", analysis)
 
     dynamic = await dynamic_chat(payload, analysis)
     if dynamic:
         reply, engine, lang, vlang = dynamic
-        return ChatResponse(reply=reply, engine=engine, language=lang, voice_lang=vlang)
-
-    # Groq failed or wrong language — reliable composer enforces language correctly
-    if not analysis:
+        meta = _chat_meta(analysis)
         return ChatResponse(
-            reply=compose_reply({"kind": "opening", "lang": "en", "roman": False}),
-            engine="dynamic-composer",
-            language="en",
-            voice_lang="en-US",
+            reply=sanitize_llm_reply(reply),
+            engine=engine,
+            language=lang,
+            voice_lang=vlang,
+            recommended_specialty_slug=meta["recommended_specialty_slug"],
+            suggest_doctors=meta["suggest_doctors"],
         )
 
-    reply = compose_reply(analysis)
-    return ChatResponse(
-        reply=reply,
-        engine="dynamic-composer",
-        language=analysis.get("lang", "en"),
-        voice_lang=voice_for_analysis(analysis),
-    )
+    if not analysis:
+        return _make_chat_response(
+            compose_reply({"kind": "opening", "lang": "en", "roman": False}),
+            "dynamic-composer",
+            {"kind": "opening", "lang": "en", "roman": False},
+        )
+
+    return _make_chat_response(compose_reply(analysis), "dynamic-composer", analysis)
 
 
 @app.post("/summary", response_model=SummaryResponse)

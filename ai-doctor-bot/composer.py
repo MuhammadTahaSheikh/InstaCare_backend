@@ -14,9 +14,23 @@ MEDICINE_ASK_RE = re.compile(
     re.I,
 )
 
+DOCTOR_ASK_RE = re.compile(
+    r"(which|what|recommend|suggest|find|need|book|see|consult).{0,40}(doctor|dr\b|specialist|physician)|"
+    r"(doctor|specialist|physician).{0,30}(help|recommend|suggest|book|consult|for me)|"
+    r"bestech\s*care|bestechcare|"
+    r"on (the )?platform|"
+    r"who should i see|"
+    r"konsa doctor|kaun sa doctor|doctor batao|doctor suggest",
+    re.I,
+)
+
 
 def is_medicine_request(text: str) -> bool:
     return bool(MEDICINE_ASK_RE.search(text or ""))
+
+
+def is_doctor_request(text: str) -> bool:
+    return bool(DOCTOR_ASK_RE.search(text or ""))
 
 
 def compose_reply(analysis: dict[str, Any]) -> str:
@@ -45,6 +59,8 @@ def compose_reply(analysis: dict[str, Any]) -> str:
         return _medicine_guidance(analysis)
     if analysis.get("medicine_request") and analysis.get("next_question"):
         return _medicine_partial(analysis)
+    if analysis.get("suggest_doctors") and not analysis.get("guidance_ready"):
+        return _doctor_platform(analysis)
     if analysis.get("guidance_ready"):
         return _guidance(analysis)
     if analysis.get("next_question"):
@@ -251,6 +267,27 @@ def _symptom_followup(analysis: dict[str, Any]) -> str:
             ack = _pick(["Got it, thanks for that.", "Okay, that helps.", "I see."], snippet)
 
     return f"{ack}\n\n{question}\n\n⚠️ {_disclaimer(analysis)}"
+
+
+def _doctor_platform(analysis: dict[str, Any]) -> str:
+    topic = analysis.get("topic") or analysis.get("recommended_specialty_slug", "symptoms").replace("-", " ")
+    roman = analysis["roman"]
+    lang = analysis["lang"]
+
+    if roman:
+        body = (
+            f"Bilkul! Aap ke **{topic}** ke liye BestechCare par verified doctors hain. "
+            "Neeche un ki list hai — aap seedha book kar sakte hain."
+        )
+    elif lang == "en":
+        body = (
+            f"On BestechCare we have verified **{topic}** specialists who can help with your case. "
+            "Here are the best matches from our platform — you can book directly:"
+        )
+    else:
+        body = t("specialist_recommend", lang, roman=roman, specialty=topic)
+
+    return f"{body}\n\n⚠️ {_disclaimer(analysis)}"
 
 
 def _guidance(analysis: dict[str, Any]) -> str:

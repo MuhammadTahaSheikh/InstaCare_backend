@@ -38,6 +38,10 @@ def _analysis_context(analysis: dict[str, Any] | None) -> str:
     ]
     if analysis.get("topic"):
         lines.append(f"- Symptom topic: {analysis['topic']}")
+    if analysis.get("recommended_specialty_slug"):
+        lines.append(f"- Best specialty on BestechCare: {analysis['recommended_specialty_slug']}")
+    if analysis.get("suggest_doctors"):
+        lines.append("- Patient wants doctor recommendations from BestechCare — mention booking on BestechCare.")
     if analysis.get("next_question"):
         lines.append(f"- Useful follow-up to ask: {analysis['next_question']}")
     if analysis.get("guidance_ready"):
@@ -113,6 +117,7 @@ async def _call_groq(
                 return None
             data = res.json()
             reply = data["choices"][0]["message"]["content"].strip()
+            reply = sanitize_llm_reply(reply)
             if not reply_matches_style(reply, lang, roman=roman):
                 return None
             return reply
@@ -186,6 +191,18 @@ async def dynamic_chat(
         return reply, "ollama", lang, voice_lang_for(lang, roman=roman)
 
     return None
+
+
+def sanitize_llm_reply(reply: str) -> str:
+    """Remove leaked system instructions from model output."""
+    if not reply:
+        return reply
+    lines = [
+        line
+        for line in reply.split("\n")
+        if not line.strip().upper().startswith("LANGUAGE LOCK")
+    ]
+    return "\n".join(lines).strip()
 
 
 async def get_llm_status() -> dict:

@@ -581,20 +581,35 @@ class AiDoctorBot:
             "has_medical_intent": _has_medical_intent(last_user),
         }
 
+        from composer import is_doctor_request, is_medicine_request
+
+        if is_doctor_request(last_user):
+            base["suggest_doctors"] = True
+            if matched:
+                data = _merge_rules(matched, lang, roman=roman)
+                base["recommended_specialty_slug"] = data["specialty"]
+                base["guidance_data"] = data
+                base["topic"] = topic_name(matched[0]["id"], lang, roman=roman)
+            else:
+                base["recommended_specialty_slug"] = "general-physician"
+            if intent in conversational:
+                return base
+
         if intent in conversational:
             return base
 
         if not matched:
             return base
 
-        from composer import is_medicine_request
-
         medicine_request = is_medicine_request(last_user)
         question = _next_question(matched, full_text, lang, roman=roman)
         data = _merge_rules(matched, lang, roman=roman)
         base["topic"] = topic_name(matched[0]["id"], lang, roman=roman)
         base["guidance_data"] = data
+        base["recommended_specialty_slug"] = data["specialty"]
         base["medicine_request"] = medicine_request
+        if medicine_request or base.get("guidance_ready") or is_doctor_request(last_user):
+            base["suggest_doctors"] = True
 
         if question and len(user_messages) <= 5 and not (medicine_request and len(user_messages) >= 4):
             base["next_question"] = question

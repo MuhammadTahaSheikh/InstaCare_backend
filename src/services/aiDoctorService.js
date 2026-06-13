@@ -1,5 +1,10 @@
-const TIMEOUT_MS = 30000;
+import {
+  fetchRecommendedDoctors,
+  sanitizeBotReply,
+  appendDoctorRecommendations,
+} from './aiDoctorDoctors.js';
 
+const TIMEOUT_MS = 30000;
 const BOT_URL = (process.env.AI_DOCTOR_BOT_URL || 'http://127.0.0.1:5003').replace(/\/$/, '');
 
 let botHealthCache = { checkedAt: 0, available: false, engine: null };
@@ -117,16 +122,31 @@ export async function getBotOpening() {
   };
 }
 
-export async function generateChatReply(conversationMessages) {
+export async function generateChatReply(conversationMessages, citySlug = 'lahore') {
   const payload = conversationMessages.map((m) => ({ role: m.role, content: m.content }));
 
   const health = await checkBotHealth();
   if (health.available) {
     const data = await callPythonBot('/chat', { messages: payload });
+    let reply = sanitizeBotReply(data.reply);
+    let recommendedDoctors = [];
+    const roman = (data.voice_lang || '').startsWith('hi') || data.language === 'ur' && /[a-z]{3,}/i.test(reply) && /\b(hai|hain|aap|mujhe)\b/i.test(reply);
+
+    if (data.suggest_doctors && data.recommended_specialty_slug) {
+      recommendedDoctors = await fetchRecommendedDoctors(data.recommended_specialty_slug, citySlug);
+      reply = appendDoctorRecommendations(reply, recommendedDoctors, {
+        language: data.language || 'en',
+        roman: Boolean(roman),
+        specialtySlug: data.recommended_specialty_slug,
+      });
+    }
+
     return {
-      reply: data.reply,
+      reply,
       language: data.language || 'en',
       voice_lang: data.voice_lang || 'en-US',
+      recommended_doctors: recommendedDoctors,
+      recommended_specialty_slug: data.recommended_specialty_slug || null,
     };
   }
 

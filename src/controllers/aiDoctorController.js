@@ -9,6 +9,7 @@ import {
 } from '../services/aiDoctorService.js';
 import { buildConsultationPdf } from '../services/aiDoctorPdfService.js';
 import { notifyAiDoctorComplete } from '../services/n8nService.js';
+import { fetchRecommendedDoctors } from '../services/aiDoctorDoctors.js';
 
 function parseJsonField(value, fallback) {
   if (value == null) return fallback;
@@ -37,52 +38,6 @@ function canAccessConsultation(consultation, req) {
   if (!consultation) return false;
   if (consultation.user_id && req.user?.id !== consultation.user_id) return false;
   return true;
-}
-
-async function fetchRecommendedDoctors(specialtySlug, citySlug) {
-  let query = `
-    SELECT d.id, d.consultation_fee, d.rating, d.online_consultation,
-           u.name, s.name AS specialty_name, s.slug AS specialty_slug,
-           h.name AS hospital_name, c.slug AS city_slug
-    FROM doctors d
-    JOIN users u ON d.user_id = u.id
-    JOIN specialties s ON d.specialty_id = s.id
-    LEFT JOIN hospitals h ON d.hospital_id = h.id
-    LEFT JOIN cities c ON h.city_id = c.id
-    WHERE d.is_verified = TRUE
-  `;
-  const params = [];
-
-  if (specialtySlug) {
-    query += ' AND s.slug = ?';
-    params.push(specialtySlug);
-  }
-  if (citySlug) {
-    query += ' AND c.slug = ?';
-    params.push(citySlug);
-  }
-
-  query += ' ORDER BY d.rating DESC LIMIT 5';
-  const [doctors] = await pool.query(query, params);
-
-  if (doctors.length === 0 && citySlug) {
-    const [fallback] = await pool.query(
-      `SELECT d.id, d.consultation_fee, d.rating, d.online_consultation,
-              u.name, s.name AS specialty_name, s.slug AS specialty_slug,
-              h.name AS hospital_name, c.slug AS city_slug
-       FROM doctors d
-       JOIN users u ON d.user_id = u.id
-       JOIN specialties s ON d.specialty_id = s.id
-       LEFT JOIN hospitals h ON d.hospital_id = h.id
-       LEFT JOIN cities c ON h.city_id = c.id
-       WHERE d.is_verified = TRUE AND s.slug = ?
-       ORDER BY d.rating DESC LIMIT 5`,
-      [specialtySlug || 'general-physician']
-    );
-    return fallback;
-  }
-
-  return doctors;
 }
 
 export async function getStatus(req, res) {
@@ -163,14 +118,20 @@ export async function sendMessage(req, res) {
     );
 
     const history = await getMessages(consultation.id);
-    const { reply, language, voice_lang: voiceLang } = await generateChatReply(history);
+    const { reply, language, voice_lang: voiceLang, recommended_doctors: recommendedDoctors } =
+      await generateChatReply(history, consultation.city_slug || 'lahore');
 
     await pool.query(
       'INSERT INTO ai_consultation_messages (consultation_id, role, content) VALUES (?, ?, ?)',
       [consultation.id, 'assistant', reply]
     );
 
-    res.json({ reply, language, voice_lang: voiceLang });
+    res.json({
+      reply,
+      language,
+      voice_lang: voiceLang,
+      recommended_doctors: recommendedDoctors || [],
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
