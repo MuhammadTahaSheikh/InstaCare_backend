@@ -30,6 +30,8 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     engine: str
+    language: str = "en"
+    voice_lang: str = "en-US"
 
 
 class SummaryResponse(BaseModel):
@@ -45,6 +47,8 @@ class SummaryResponse(BaseModel):
     recommended_specialty_slug: str
     disclaimer: str
     engine: str
+    language: str = "en"
+    voice_lang: str = "en-US"
 
 
 async def _ollama_available() -> bool:
@@ -110,8 +114,15 @@ async def chat(req: ChatRequest):
     if ollama_reply:
         return ChatResponse(reply=ollama_reply, engine="ollama")
 
-    reply = bot.chat(payload)
-    return ChatResponse(reply=reply, engine="python-rules")
+    reply, lang = bot.chat(payload)
+    from i18n import voice_lang_for
+
+    return ChatResponse(
+        reply=reply,
+        engine="python-rules",
+        language=lang,
+        voice_lang=voice_lang_for(lang),
+    )
 
 
 @app.post("/summary", response_model=SummaryResponse)

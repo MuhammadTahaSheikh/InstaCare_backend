@@ -1,18 +1,102 @@
-"""BestechCare AI Doctor — rule-based health guidance bot (no OpenAI key required)."""
+"""BestechCare AI Doctor — multilingual rule-based bot."""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from knowledge import (
-    DISCLAIMER,
-    EMERGENCY_KEYWORDS,
-    GENERAL_FOLLOW_UPS,
-    OPENING_PROMPT,
-    SPECIALTY_SLUGS,
-    SYMPTOM_RULES,
+from i18n import (
+    Lang,
+    is_language_switch_request,
+    resolve_language,
+    specialty_name,
+    t,
+    voice_lang_for,
 )
+from knowledge import EMERGENCY_KEYWORDS, SPECIALTY_SLUGS, SYMPTOM_RULES
+
+URDU_EXTRA_KEYWORDS: dict[str, list[str]] = {
+    "headache": ["sar dard", "sir dard", "سر درد"],
+    "fever": ["bukhar", "بخار", "tap dik"],
+    "cough_cold": ["khansi", "zukam", "کھansi", "گلا"],
+    "stomach": ["pet dard", "پیٹ", "qay", "ishal", "متلی"],
+    "skin": ["khujli", "خارش", "danay"],
+    "mental": ["pareshani", "tension", "udaasi", "پریشانی"],
+    "dental": ["daant", "dant", "دانت"],
+    "urinary": ["peshab", "پیشاب", "jlana"],
+}
+
+URDU_QUESTIONS: dict[str, dict[str, str]] = {
+    "headache": {
+        "duration": "یہ سر درد کب سے ہے — گھنٹوں، دنوں یا زیادہ؟",
+        "severity": "1 سے 10 تک درد کتنی شدید ہے؟",
+        "fever": "کیا بخار یا گردن میں اکڑاہٹ بھی ہے؟",
+        "vision": "کیا نظر میں تبدیلی، متلی یا روشنی سے تکلیف ہے؟",
+    },
+    "fever": {
+        "duration": "بخار کتنے دنوں سے ہے؟",
+        "temperature": "درجہ حرارت ناپا؟ کتنا تھا؟",
+        "other": "کھansi، گلے میں درد، جسم درد یا خارش بھی ہے؟",
+    },
+    "cough_cold": {
+        "duration": "یہ علامات کب سے ہیں؟",
+        "type": "کھansi خشک ہے یا بلغم کے ساتھ؟",
+        "breathing": "سانس لینے میں مشکل یا گھونگھٹ؟",
+    },
+    "stomach": {
+        "duration": "پیٹ کا مسئلہ کب سے؟",
+        "location": "درد کہاں ہے — اوپر، نیچے، یا پورے پیٹ میں؟",
+        "severity": "درد مسلسل ہے یا آتا جاتا؟ قے یا اسہال؟",
+    },
+    "skin": {
+        "duration": "جلد کا مسئلہ کب سے؟",
+        "spread": "ایک جگہ ہے یا پھیل رہا ہے؟",
+        "trigger": "کیا کوئی نیا sabun, khana ya dawa use ki?",
+    },
+    "mental": {
+        "duration": "کتنے عرصے سے ایسا محسوس ہو رہا ہے؟",
+        "severity": "کam aur neend par asar ho raha hai?",
+        "safety": "کya kabhi apne nuksan ke khayal aaye? (Aapki safety zaroori hai.)",
+    },
+    "dental": {
+        "duration": "دانت درد کب سے؟",
+        "type": "گرم/ٹھنڈا کھانے سے درد؟ مسوڑھوں میں سوجن؟",
+    },
+    "urinary": {
+        "duration": "پیشاب کی تکلیف کب سے؟",
+        "symptoms": "پیشاب میں خون، بخار یا کمر درد؟",
+    },
+}
+
+URDU_EMERGENCY = [
+    ("seene mein dard", "سینے میں درد — فوراً ایمرجنسی جانیں۔"),
+    ("saans nahi", "سانس کی شدید تکلیف — فوراً ایمرجنسی۔"),
+    ("khoon", "شدید خون بہنا — فوراً ایمرجنسی۔"),
+    ("behosh", "بے ہوشی — فوراً ایمرجنسی کال کریں۔"),
+]
+
+URDU_FOLLOWUPS = [
+    "براہ کرم اپنی عمر اور جنس بتائیں۔",
+    "کya aap koi dawa le rahe hain ya sugar/BP jaise masail hain?",
+    "Kya aap ne kuch azma kar dekha symptom kam karne ke liye?",
+]
+
+EN_FOLLOWUPS = [
+    "Could you tell me your age and gender?",
+    "Are you taking any medications or do you have chronic conditions?",
+    "Have you tried anything to relieve the symptoms?",
+]
+
+TOPIC_NAMES = {
+    "headache": {"en": "headache", "ur": "سر درد", "hi": "सिरदर्द", "ar": "صداع"},
+    "fever": {"en": "fever", "ur": "بخار", "hi": "बुखार", "ar": "حمى"},
+    "cough_cold": {"en": "cold/cough", "ur": "زکام/کھansi", "hi": "खांसी", "ar": "سعال"},
+    "stomach": {"en": "stomach issues", "ur": "پیٹ کا مسئلہ", "hi": "पेट", "ar": "معدة"},
+    "skin": {"en": "skin issues", "ur": "جلد کا مسئلہ", "hi": "त्वचा", "ar": "جلد"},
+    "mental": {"en": "mental health", "ur": "ذہنی صحت", "hi": "मानसिक", "ar": "نفسية"},
+    "dental": {"en": "dental pain", "ur": "دانت درد", "hi": "दांत", "ar": "أسنان"},
+    "urinary": {"en": "urinary symptoms", "ur": "پیشاب کی تکلیف", "hi": "पेशाब", "ar": "بول"},
+}
 
 
 def _normalize(text: str) -> str:
@@ -27,11 +111,16 @@ def _all_text(messages: list[dict]) -> str:
     return " ".join(m["content"] for m in messages)
 
 
-def _detect_emergency(text: str) -> str | None:
+def _detect_emergency(text: str, lang: Lang) -> str | None:
     normalized = _normalize(text)
     for keyword, message in EMERGENCY_KEYWORDS:
         if keyword in normalized:
+            if lang == "ur":
+                return URDU_EMERGENCY[0][1] if "chest" in keyword or "breath" in keyword else message
             return message
+    for keyword, urdu_msg in URDU_EMERGENCY:
+        if keyword in normalized:
+            return urdu_msg
     return None
 
 
@@ -39,60 +128,57 @@ def _match_rules(text: str) -> list[dict]:
     normalized = _normalize(text)
     matched = []
     for rule in SYMPTOM_RULES:
-        if any(kw in normalized for kw in rule["keywords"]):
+        keywords = list(rule["keywords"]) + URDU_EXTRA_KEYWORDS.get(rule["id"], [])
+        if any(kw in normalized for kw in keywords):
             matched.append(rule)
     return matched
 
 
-def _topic_asked(full_text: str, topic: str) -> bool:
-    normalized = _normalize(full_text)
-    rule = next((r for r in SYMPTOM_RULES if r["id"] == topic), None)
-    if not rule:
-        return False
-    follow = rule.get("follow_ups", [])
-    for _, markers in follow:
-        if any(m in normalized for m in markers):
-            return True
-    return False
+def _get_question(rule_id: str, topic: str, lang: Lang, rule: dict) -> str | None:
+    if lang == "ur" and rule_id in URDU_QUESTIONS and topic in URDU_QUESTIONS[rule_id]:
+        return URDU_QUESTIONS[rule_id][topic]
+    return rule.get("questions", {}).get(topic)
 
 
-def _general_follow_up_index(full_text: str) -> int:
-    normalized = _normalize(full_text)
-    asked = 0
-    if any(w in normalized for w in ["age", "years old", "year old", "male", "female", "gender"]):
-        asked += 1
-    if any(w in normalized for w in ["medication", "medicine", "diabetes", "hypertension", "chronic", "bp", "blood pressure"]):
-        asked += 1
-    if any(w in normalized for w in ["tried", "took", "already", "relief", "panadol", "medicine"]):
-        asked += 1
-    return asked
+def _topic_covered(full_text: str, markers: list[str]) -> bool:
+    return any(m in _normalize(full_text) for m in markers)
 
 
-def _next_question(matched_rules: list[dict], full_text: str) -> str | None:
+def _next_question(matched_rules: list[dict], full_text: str, lang: Lang) -> str | None:
     for rule in matched_rules:
         for topic, markers in rule.get("follow_ups", []):
-            if not any(m in _normalize(full_text) for m in markers):
-                q = rule.get("questions", {}).get(topic)
-                if q and q.lower()[:20] not in _normalize(full_text):
+            if not _topic_covered(full_text, markers):
+                q = _get_question(rule["id"], topic, lang, rule)
+                if q:
                     return q
 
-    idx = _general_follow_up_index(full_text)
-    if idx < len(GENERAL_FOLLOW_UPS):
-        question = GENERAL_FOLLOW_UPS[idx]
-        if question.lower()[:20] not in _normalize(full_text):
-            return question
+    followups = URDU_FOLLOWUPS if lang == "ur" else EN_FOLLOWUPS
+    asked = 0
+    normalized = _normalize(full_text)
+    if any(m in normalized for m in ["age", "umar", "saal", "years old", "male", "female", "jins"]):
+        asked += 1
+    if any(m in normalized for m in ["medication", "dawa", "dawai", "diabetes", "sugar", "bp", "chronic"]):
+        asked += 1
+    if any(m in normalized for m in ["tried", "azma", "koshish", "panadol", "already", "liya"]):
+        asked += 1
 
+    if asked < len(followups):
+        return followups[asked]
     return None
 
 
-def _merge_rules(rules: list[dict]) -> dict:
+def _merge_rules(rules: list[dict], lang: Lang) -> dict:
     if not rules:
         return {
             "conditions": [],
             "medicines": [],
             "tests": [],
-            "precautions": ["Monitor your symptoms closely"],
-            "self_care": ["Rest and stay hydrated", "Seek medical care if symptoms worsen"],
+            "precautions": ["علامات پر نظر رکھیں"] if lang == "ur" else ["Monitor your symptoms closely"],
+            "self_care": (
+                ["آرام کریں اور پani پئیں", "علامات بڑھیں تو ڈاکٹر دکھائیں"]
+                if lang == "ur"
+                else ["Rest and stay hydrated", "See a doctor if symptoms worsen"]
+            ),
             "specialty": "general-physician",
         }
 
@@ -121,141 +207,123 @@ def _merge_rules(rules: list[dict]) -> dict:
     }
 
 
-def _extract_symptoms(user_text: str, matched_rules: list[dict]) -> list[str]:
-    symptoms = []
-    normalized = _normalize(user_text)
-    for rule in matched_rules:
-        for kw in rule["keywords"]:
-            if kw in normalized and kw not in symptoms:
-                symptoms.append(kw)
-    if not symptoms and user_text.strip():
-        first_sentence = user_text.strip().split(".")[0][:80]
-        symptoms.append(first_sentence)
-    return symptoms[:6]
+def _likelihood_label(value: str, lang: Lang) -> str:
+    mapping = {"low": {"ur": "کم", "en": "low"}, "moderate": {"ur": "درمیانی", "en": "moderate"}, "high": {"ur": "زیادہ", "en": "high"}}
+    return mapping.get(value, {}).get(lang, value)
 
 
-def _build_guidance(matched_rules: list[dict]) -> str:
-    data = _merge_rules(matched_rules)
-    lines = [
-        "Thank you for sharing those details. Here is my **informational guidance** (not a medical diagnosis):\n",
-        "**Possible considerations** (with disclaimers):",
-    ]
+def _build_guidance(matched_rules: list[dict], lang: Lang) -> str:
+    data = _merge_rules(matched_rules, lang)
+    lines = [t("guidance_intro", lang), "", t("possible_conditions", lang)]
 
     for c in data["conditions"]:
-        lines.append(f"• **{c['name']}** ({c['likelihood']} likelihood) — {c['note']}")
+        like = _likelihood_label(c.get("likelihood", "moderate"), lang)
+        lines.append(f"• **{c['name']}** ({like}) — {c['note']}")
 
     if data["medicines"]:
-        lines.append("\n**Over-the-counter options** (confirm with a pharmacist/doctor):")
+        lines.extend(["", t("otc_heading", lang)])
         for m in data["medicines"]:
             lines.append(f"• **{m['name']}** ({m['type']}): {m['usage']}. {m['precaution']}")
 
     if data["tests"]:
-        lines.append("\n**Suggested tests** (if your doctor agrees):")
-        for t in data["tests"]:
-            lines.append(f"• {t}")
+        lines.extend(["", t("tests_heading", lang)])
+        for test in data["tests"]:
+            lines.append(f"• {test}")
 
     if data["precautions"]:
-        lines.append("\n**Precautions:**")
+        lines.extend(["", t("precautions_heading", lang)])
         for p in data["precautions"]:
             lines.append(f"• {p}")
 
     if data["self_care"]:
-        lines.append("\n**Self-care & lifestyle:**")
+        lines.extend(["", t("self_care_heading", lang)])
         for s in data["self_care"]:
             lines.append(f"• {s}")
 
-    lines.append(
-        f"\nBased on your symptoms, I recommend consulting a **{data['specialty'].replace('-', ' ').title()}** "
-        f"or General Physician on BestechCare for a proper evaluation."
-    )
-    lines.append(f"\n⚠️ **Reminder:** {DISCLAIMER}")
-    lines.append(
-        "\nWhen you're ready, click **End Consultation** to get a full summary, doctor recommendations, and a downloadable PDF."
-    )
-
+    spec = specialty_name(data["specialty"], lang)
+    lines.extend(["", t("specialist_recommend", lang, specialty=spec)])
+    lines.extend(["", f"⚠️ {t('disclaimer', lang)}"])
+    lines.append(t("end_consultation_hint", lang))
     return "\n".join(lines)
 
 
-class AiDoctorBot:
-    """Stateless conversational bot driven by symptom rules."""
+def _extract_symptoms(user_text: str, matched_rules: list[dict]) -> list[str]:
+    symptoms = []
+    normalized = _normalize(user_text)
+    for rule in matched_rules:
+        keywords = list(rule["keywords"]) + URDU_EXTRA_KEYWORDS.get(rule["id"], [])
+        for kw in keywords:
+            if kw in normalized and kw not in symptoms:
+                symptoms.append(kw)
+    if not symptoms and user_text.strip():
+        symptoms.append(user_text.strip().split(".")[0][:80])
+    return symptoms[:6]
 
-    def chat(self, messages: list[dict[str, str]]) -> str:
+
+class AiDoctorBot:
+    def chat(self, messages: list[dict[str, str]]) -> tuple[str, Lang]:
+        lang = resolve_language(messages)
         user_messages = [m for m in messages if m.get("role") == "user"]
 
         if not user_messages:
-            return OPENING_PROMPT
+            return t("opening", lang), lang
+
+        last_user = user_messages[-1]["content"]
+        switch = is_language_switch_request(last_user)
+        if switch:
+            lang = switch
+            if not _match_rules(_all_user_text(messages)):
+                return t("lang_switched", lang), lang
 
         user_text = _all_user_text(messages)
         full_text = _all_text(messages)
 
-        emergency = _detect_emergency(user_text)
+        emergency = _detect_emergency(user_text, lang)
         if emergency:
             return (
-                f"🚨 **URGENT — Please seek emergency medical care immediately.**\n\n"
-                f"{emergency}\n\n"
-                f"Go to the nearest hospital emergency room or call emergency services.\n\n"
-                f"{DISCLAIMER}"
-            )
+                f"{t('emergency_header', lang)}\n\n{emergency}\n\n"
+                f"{t('emergency_footer', lang)}\n\n{t('disclaimer', lang)}"
+            ), lang
 
         matched = _match_rules(user_text)
-
         if not matched:
-            if len(user_messages) == 1:
-                return (
-                    "Thank you for describing your concern. To help you better, could you share:\n"
-                    "• What symptoms are you experiencing?\n"
-                    "• How long have they been present?\n"
-                    "• How severe are they (mild, moderate, severe)?\n\n"
-                    f"⚠️ {DISCLAIMER}"
-                )
-            return (
-                "I understand you're not feeling well. Could you describe your main symptoms more specifically "
-                "(e.g. fever, headache, stomach pain, cough, skin rash)?\n\n"
-                f"⚠️ {DISCLAIMER}"
-            )
+            body = t("no_symptoms_first", lang) if len(user_messages) == 1 else t("no_symptoms_followup", lang)
+            return f"{body}\n\n⚠️ {t('disclaimer', lang)}", lang
 
-        question = _next_question(matched, full_text)
-        user_count = len(user_messages)
+        question = _next_question(matched, full_text, lang)
+        if question and len(user_messages) <= 3:
+            topic = TOPIC_NAMES.get(matched[0]["id"], {}).get(lang, matched[0]["id"])
+            prefix = t("prefix_symptom", lang, topic=topic) if len(user_messages) == 1 else t("prefix_see", lang)
+            return f"{prefix}{question}\n\n⚠️ {t('disclaimer', lang)}", lang
 
-        if question and user_count <= 3:
-            prefix = "I see. "
-            if user_count == 1:
-                prefix = f"I understand you're dealing with symptoms related to {matched[0]['id'].replace('_', ' ')}. "
-            return f"{prefix}{question}\n\n⚠️ {DISCLAIMER}"
-
-        return _build_guidance(matched)
+        return _build_guidance(matched, lang), lang
 
     def summarize(self, messages: list[dict[str, str]]) -> dict[str, Any]:
+        lang = resolve_language(messages)
         user_text = _all_user_text(messages)
         matched = _match_rules(user_text)
-        data = _merge_rules(matched)
+        data = _merge_rules(matched, lang)
         symptoms = _extract_symptoms(user_text, matched)
-        emergency = _detect_emergency(user_text)
+        emergency = _detect_emergency(user_text, lang)
 
-        summary_parts = []
-        if matched:
-            summary_parts.append(
-                f"During this AI-assisted consultation, the patient discussed symptoms including "
-                f"{', '.join(symptoms[:3])}. "
-            )
-            summary_parts.append(
-                "Based on the information provided, several possible conditions were discussed with appropriate "
-                "medical disclaimers. Over-the-counter options, self-care measures, and suggested diagnostic tests "
-                "were shared for informational purposes only."
+        if lang == "ur":
+            summary = (
+                f"اس مشاورت میں مریض نے {', '.join(symptoms[:3]) or 'علامات'} بیان کیں۔ "
+                "ممکنہ وجوہات اور OTC دوائیں معلوماتی طور پر بتائی گئیں — یہ تشخیص نہیں۔ "
+                "BestechCare پر qualified doctor سے معائنہ ضروری ہے۔"
+                if matched
+                else "صحت کے مسائل بیان کیے گئے۔ عمومی رہنمائی دی گئی — ڈاکٹر سے معائنہ کروائیں۔"
             )
         else:
-            summary_parts.append(
-                "The patient described health concerns during this AI-assisted consultation. "
-                "General guidance was provided and a qualified doctor evaluation was recommended."
+            summary = (
+                f"Symptoms discussed: {', '.join(symptoms[:3])}. Informational guidance only — not a diagnosis. "
+                "See a qualified doctor on BestechCare."
+                if matched
+                else "Health concerns discussed. General guidance provided. Professional evaluation recommended."
             )
 
-        summary_parts.append(
-            "This consultation does not constitute a medical diagnosis. "
-            "The patient should book an appointment with a qualified healthcare provider on BestechCare."
-        )
-
         return {
-            "summary": " ".join(summary_parts),
+            "summary": summary,
             "symptoms_discussed": symptoms,
             "possible_conditions": data["conditions"],
             "medicines": data["medicines"],
@@ -265,7 +333,9 @@ class AiDoctorBot:
             "urgent_care_required": bool(emergency),
             "urgent_care_reason": emergency,
             "recommended_specialty_slug": data["specialty"],
-            "disclaimer": DISCLAIMER,
+            "disclaimer": t("disclaimer", lang),
+            "language": lang,
+            "voice_lang": voice_lang_for(lang),
         }
 
 

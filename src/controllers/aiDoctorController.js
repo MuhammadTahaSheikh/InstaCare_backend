@@ -5,6 +5,7 @@ import {
   generateConsultationSummary,
   isAiDoctorConfigured,
   getAiDoctorStatus,
+  getBotOpening,
 } from '../services/aiDoctorService.js';
 import { buildConsultationPdf } from '../services/aiDoctorPdfService.js';
 import { notifyAiDoctorComplete } from '../services/n8nService.js';
@@ -106,17 +107,14 @@ export async function createSession(req, res) {
       [id, userId, citySlug]
     );
 
-    const welcome =
-      'Hello! I\'m your BestechCare AI Doctor assistant. I can help you understand your symptoms ' +
-      'and suggest next steps — but I am not a replacement for a licensed doctor.\n\n' +
-      'Please describe your symptoms or health concern, and I\'ll ask a few follow-up questions to guide you.';
+    const { message: welcome, language, voice_lang: voiceLang } = await getBotOpening();
 
     await pool.query(
       'INSERT INTO ai_consultation_messages (consultation_id, role, content) VALUES (?, ?, ?)',
       [id, 'assistant', welcome]
     );
 
-    res.status(201).json({ id, message: welcome });
+    res.status(201).json({ id, message: welcome, language, voice_lang: voiceLang });
   } catch (err) {
     if (err.code === 'ER_NO_SUCH_TABLE') {
       return res.status(503).json({ error: 'AI Doctor database not set up. Run: npm run db:migrate:ai-doctor' });
@@ -165,14 +163,14 @@ export async function sendMessage(req, res) {
     );
 
     const history = await getMessages(consultation.id);
-    const reply = await generateChatReply(history);
+    const { reply, language, voice_lang: voiceLang } = await generateChatReply(history);
 
     await pool.query(
       'INSERT INTO ai_consultation_messages (consultation_id, role, content) VALUES (?, ?, ?)',
       [consultation.id, 'assistant', reply]
     );
 
-    res.json({ reply });
+    res.json({ reply, language, voice_lang: voiceLang });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -104,13 +104,30 @@ const OPENAI_SUMMARY_PROMPT = `Produce a final consultation report as valid JSON
 summary, symptoms_discussed, possible_conditions, medicines, suggested_tests, precautions, self_care,
 urgent_care_required, urgent_care_reason, recommended_specialty_slug, disclaimer`;
 
+export async function getBotOpening() {
+  const health = await checkBotHealth();
+  if (!health.available) {
+    throw new Error('AI Doctor bot is not running.');
+  }
+  const data = await callPythonBot('/chat', { messages: [] });
+  return {
+    message: data.reply,
+    language: data.language || 'en',
+    voice_lang: data.voice_lang || 'en-US',
+  };
+}
+
 export async function generateChatReply(conversationMessages) {
   const payload = conversationMessages.map((m) => ({ role: m.role, content: m.content }));
 
   const health = await checkBotHealth();
   if (health.available) {
     const data = await callPythonBot('/chat', { messages: payload });
-    return data.reply;
+    return {
+      reply: data.reply,
+      language: data.language || 'en',
+      voice_lang: data.voice_lang || 'en-US',
+    };
   }
 
   if (getOpenAiConfig()) {
@@ -118,7 +135,8 @@ export async function generateChatReply(conversationMessages) {
       { role: 'system', content: OPENAI_SYSTEM_PROMPT },
       ...payload,
     ];
-    return callOpenAi(messages);
+    const reply = await callOpenAi(messages);
+    return { reply, language: 'en', voice_lang: 'en-US' };
   }
 
   throw new Error(
