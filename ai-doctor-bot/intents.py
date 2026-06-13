@@ -68,6 +68,7 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 MEDICAL_RE = re.compile(
     r"(pain|hurt|ache|fever|cough|vomit|nausea|rash|symptom|sick|ill|swelling|bleeding|"
     r"dard|bukhar|khansi|takleef|beemar|dawai|headache|stomach|diarrhea|"
+    r"\bsar\b|\bsir\b|\bpet\b|\bpait\b|ho rha|ho rahi|"
     r"تکلیف|درد|بخار|علامات|بیمار|سر درد|پیٹ|کھانسی)",
     re.I,
 )
@@ -154,6 +155,39 @@ RESPONSES: dict[str, dict[Lang, str]] = {
     },
 }
 
+RESPONSES_ROMAN: dict[str, str] = {
+    "identity": (
+        "Acha sawal! Main **BestechCare AI Doctor** hoon — **AI sehat ka muawan**, haqiqi insan doctor nahin.\n\n"
+        "Main madad kar sakta hoon:\n"
+        "• Alamat samajhne mein\n"
+        "• Mumkin wajohat batane mein (tashkhees nahin)\n"
+        "• OTC dawain, ehtiyat, aur kab specialist dikhana hai\n\n"
+        "Haqiqi tashkhees ke liye BestechCare par qualified doctor se milen.\n\n"
+        "Aap ko kya alamat ya masla hai?"
+    ),
+    "identity_followup": (
+        "Wazeh kar doon: main **pura AI** hoon, insaan doctor nahin. Sirf alamat aur aglay qadam mein rehnumai karta hoon.\n\n"
+        "Batayein kya takleef hai — sar dard, bukhar, pet dard?"
+    ),
+    "capabilities": (
+        "Main yeh kar sakta hoon:\n"
+        "• Alamat samajhna\n"
+        "• Mumkin wajohat (sirf maloomat)\n"
+        "• Pakistan mein OTC dawain\n"
+        "• Ehtiyat aur tests\n"
+        "• BestechCare par specialist\n"
+        "• Akhir mein PDF khulasa\n\n"
+        "Alamat batayein!"
+    ),
+    "off_topic": (
+        "Main sirf sehat ke masail mein madad karta hoon. Alamat batayein — main khushi se madad karunga!"
+    ),
+    "unclear_nudge": (
+        "Main sehat ke sawalat ke liye hoon. Misal: \"mujhe 2 din se bukhar hai\" ya \"sar mein dard hai\"."
+    ),
+    "goodbye": "Khuda hafiz! Jab bhi sehat ka sawal ho wapas aayein.",
+}
+
 
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.lower().strip())
@@ -185,22 +219,27 @@ def classify_intent(text: str, messages: list[dict] | None = None) -> Intent:
     return "unclear"
 
 
-def get_conversational_response(intent: Intent, lang: Lang, messages: list[dict]) -> str | None:
+def get_conversational_response(intent: Intent, lang: Lang, messages: list[dict], *, roman: bool = False) -> str | None:
     last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
 
     if intent == "identity":
         prior = _count_prior_intent(messages, "identity")
-        key = "identity_followup" if prior > 1 else "identity"
-        body = RESPONSES[key].get(lang) or RESPONSES[key]["en"]
-        return f"{body}\n\n⚠️ {t('disclaimer', lang)}"
+        if roman:
+            body = RESPONSES_ROMAN["identity_followup" if prior > 1 else "identity"]
+        else:
+            key = "identity_followup" if prior > 1 else "identity"
+            body = RESPONSES[key].get(lang) or RESPONSES[key]["en"]
+        return f"{body}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     if intent == "greeting":
-        return f"{t('greeting_reply', lang)}\n\n⚠️ {t('disclaimer', lang)}"
+        return f"{t('greeting_reply', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     if intent == "thanks":
-        return f"{t('thanks_reply', lang)}\n\n⚠️ {t('disclaimer', lang)}"
+        return f"{t('thanks_reply', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     if intent == "goodbye":
+        if roman:
+            return RESPONSES_ROMAN["goodbye"]
         goodbye = {
             "en": "Take care! Feel free to come back anytime you have health questions. Goodbye!",
             "ur": "خدا حافظ! جب بھی صحت کا سوال ہو واپس آئیں۔",
@@ -210,22 +249,31 @@ def get_conversational_response(intent: Intent, lang: Lang, messages: list[dict]
         return goodbye.get(lang) or goodbye["en"]
 
     if intent == "capabilities":
-        body = RESPONSES["capabilities"].get(lang) or RESPONSES["capabilities"]["en"]
-        return f"{body}\n\n⚠️ {t('disclaimer', lang)}"
+        if roman:
+            body = RESPONSES_ROMAN["capabilities"]
+        else:
+            body = RESPONSES["capabilities"].get(lang) or RESPONSES["capabilities"]["en"]
+        return f"{body}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     if intent == "off_topic":
-        body = RESPONSES["off_topic"].get(lang) or RESPONSES["off_topic"]["en"]
-        return f"{body}\n\n⚠️ {t('disclaimer', lang)}"
+        if roman:
+            body = RESPONSES_ROMAN["off_topic"]
+        else:
+            body = RESPONSES["off_topic"].get(lang) or RESPONSES["off_topic"]["en"]
+        return f"{body}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     if intent == "unclear":
         if _count_prior_intent(messages, "unclear") >= 2:
-            nudge = {
-                "en": "I'm here for health questions. Try telling me something like: \"I have had fever for 2 days\" or \"my head hurts\".",
-                "ur": "میں صحت کے سوالات کے لیے ہوں۔ مثال: \"مجھے 2 دن سے بخار ہے\" یا \"سر میں درد ہے\"۔",
-                "hi": "मैं स्वास्थ्य के लिए हूँ। उदाहरण: \"2 दिन से बुखार है\"।",
-                "ar": "أنا للأسئلة الصحية. مثال: \"لدي حمى منذ يومين\".",
-            }
-            return f"{nudge.get(lang, nudge['en'])}\n\n⚠️ {t('disclaimer', lang)}"
-        return f"{t('unclear_reply', lang)}\n\n⚠️ {t('disclaimer', lang)}"
+            if roman:
+                nudge = RESPONSES_ROMAN["unclear_nudge"]
+            else:
+                nudge = {
+                    "en": "I'm here for health questions. Try telling me something like: \"I have had fever for 2 days\" or \"my head hurts\".",
+                    "ur": "میں صحت کے سوالات کے لیے ہوں۔ مثال: \"مجھے 2 دن سے بخار ہے\" یا \"سر میں درد ہے\"۔",
+                    "hi": "मैं स्वास्थ्य के लिए हूँ। उदाहरण: \"2 दिन से बुखार है\"।",
+                    "ar": "أنا للأسئلة الصحية. مثال: \"لدي حمى منذ يومين\".",
+                }.get(lang, "I'm here for health questions. Try telling me something like: \"I have had fever for 2 days\" or \"my head hurts\".")
+            return f"{nudge}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
+        return f"{t('unclear_reply', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     return None

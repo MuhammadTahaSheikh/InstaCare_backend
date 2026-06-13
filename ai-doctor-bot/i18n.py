@@ -11,9 +11,12 @@ URDU_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uF
 DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
 
 ROMAN_URDU_MARKERS = [
-    "mujhe", "mera", "meri", "aap", "ap ", " hai", "kya", "bukhar", "dard", "takleef",
+    "mujhe", "mjhe", "mera", "meri", "aap", "ap ", " hai", "kya", "bukhar", "dard", "takleef",
     "beemar", "dawai", "ilaj", "tabiyat", "shukriya", "mein bol", "urdu mein",
     "pet dard", "sar dard", "zukam", "khansi", "bimaar", "masla",
+    "ho rha", "ho rhi", "ho raha", "ho rahi", " rha ", " rhi ", " raha ", " rahi ",
+    "din se", " se ", "kal se", "aaj se", " ghante", " sar ", " sir ", " pet ", " pait ",
+    "mjhy", "mujhy", "mery", "apko", "aapko", "batao", "batayein", "theek", "nahi", "nahin",
 ]
 
 LANGUAGE_SWITCH_PATTERNS: list[tuple[re.Pattern[str], Lang]] = [
@@ -201,6 +204,69 @@ STRINGS: dict[str, dict] = {
     },
 }
 
+# Roman Urdu text (Latin script) — used when user writes in Roman Urdu, not Urdu script
+ROMAN_STRINGS: dict[str, str] = {
+    "disclaimer": "Hamesha doctor se mukammal checkup karwayen.",
+    "opening": (
+        "Assalam o alaikum! Main BestechCare ka AI Doctor hoon. Main aap ki alamat samajhne aur "
+        "aglay qadam batane mein madad kar sakta hoon — lekin main haqiqi doctor ka badal nahin.\n\n"
+        "Apni alamat Roman Urdu ya English mein bata dein, main usi zaban mein jawab doonga."
+    ),
+    "lang_switched": "Bilkul! Ab main Roman Urdu mein baat karunga. Apni alamat bata dein.",
+    "emergency_header": "🚨 **FORI — abhi emergency medical madad hasil karein.**",
+    "emergency_footer": "Qareebi hospital emergency mein jayein ya emergency number par call karein.",
+    "no_symptoms_first": (
+        "Shukriya. Barah e karam batayein:\n"
+        "• Aap ko kya alamat hain?\n"
+        "• Kab se hain?\n"
+        "• Kitni shadeed hain?"
+    ),
+    "no_symptoms_followup": (
+        "Main aap ki sehat mein madad ke liye yahan hoon. Apni alamat batayein — "
+        "jaise bukhar, sar dard, khansi, ya pet dard."
+    ),
+    "greeting_reply": (
+        "Walaikum assalam! Main theek hoon, poochhne ka shukriya. Main BestechCare ka AI Doctor hoon.\n\n"
+        "Aaj aap ko kya alamat ya sehat ka masla hai? Tafseel se batayein."
+    ),
+    "thanks_reply": "Khush amdeed! Kya sehat ke bare mein kuch aur poochna hai?",
+    "unclear_reply": (
+        "Main sahi madad karna chahta hoon. Barah e karam apni asal alamat ya jismani takleef batayein."
+    ),
+    "guidance_intro": "Shukriya. Yeh **aam maloomati rehnumai** hai (tashkhees nahin):",
+    "possible_conditions": "**Mumkin wajohat:**",
+    "otc_heading": "**Bina nuskhe ki dawain:**",
+    "tests_heading": "**Tajweez shuda tests:**",
+    "precautions_heading": "**Ehtiyat:**",
+    "self_care_heading": "**Gharailu ilaj:**",
+    "specialist_recommend": "**{specialty}** se BestechCare par mashwara karein.",
+    "end_consultation_hint": "**End Consultation** dabayein — khulasa, doctor aur PDF milega.",
+    "prefix_symptom": "Samajh gaya — aap ko {topic} ki takleef hai. ",
+    "prefix_see": "Theek hai. ",
+}
+
+TOPIC_NAMES_ROMAN: dict[str, str] = {
+    "headache": "sar dard",
+    "fever": "bukhar",
+    "cough_cold": "zukam/khansi",
+    "stomach": "pet ka masla",
+    "skin": "jild ka masla",
+    "mental": "zehni sehat",
+    "dental": "daant dard",
+    "urinary": "peshab ki takleef",
+}
+
+SPECIALTY_NAMES_ROMAN: dict[str, str] = {
+    "general-physician": "General Physician",
+    "neurologist": "Neurologist",
+    "gastroenterologist": "Gastroenterologist",
+    "dermatologist": "Dermatologist",
+    "ent-specialist": "ENT Specialist",
+    "psychiatrist": "Psychiatrist",
+    "dentist": "Dentist",
+    "urologist": "Urologist",
+}
+
 TOPIC_NAMES: dict[str, dict[Lang, str]] = {
     "headache": {"en": "headache", "ur": "سر درد", "hi": "सिरदर्द", "ar": "صداع"},
     "fever": {"en": "fever", "ur": "بخار", "hi": "बुखार", "ar": "حمى"},
@@ -224,14 +290,34 @@ SPECIALTY_NAMES: dict[str, dict[Lang, str]] = {
 }
 
 
-def t(key: str, lang: Lang, **kwargs: str) -> str:
-    bucket = STRINGS.get(key, {})
-    text = bucket.get(lang) or bucket.get("en") or key
+def t(key: str, lang: Lang, *, roman: bool = False, **kwargs: str) -> str:
+    if roman and lang == "ur" and key in ROMAN_STRINGS:
+        text = ROMAN_STRINGS[key]
+    else:
+        bucket = STRINGS.get(key, {})
+        text = bucket.get(lang) or bucket.get("en") or key
     return text.format(**kwargs) if kwargs else text
 
 
-def specialty_name(slug: str, lang: Lang) -> str:
+def topic_name(topic_id: str, lang: Lang, *, roman: bool = False) -> str:
+    if roman and lang == "ur":
+        return TOPIC_NAMES_ROMAN.get(topic_id, topic_id.replace("_", " "))
+    return TOPIC_NAMES.get(topic_id, {}).get(lang) or topic_id.replace("_", " ")
+
+
+def specialty_name(slug: str, lang: Lang, *, roman: bool = False) -> str:
+    if roman and lang == "ur":
+        return SPECIALTY_NAMES_ROMAN.get(slug, slug.replace("-", " ").title())
     return SPECIALTY_NAMES.get(slug, {}).get(lang) or slug.replace("-", " ").title()
+
+
+def reply_in_roman_urdu(text: str) -> bool:
+    """True when user writes Urdu in Latin script (Roman Urdu), not Urdu script."""
+    if not text or not text.strip():
+        return False
+    if URDU_SCRIPT_RE.search(text):
+        return False
+    return detect_language_from_text(text) == "ur"
 
 
 def _score_roman_urdu(text: str) -> int:
@@ -305,5 +391,7 @@ def is_language_switch_request(text: str) -> Lang | None:
     return None
 
 
-def voice_lang_for(lang: Lang) -> str:
+def voice_lang_for(lang: Lang, *, roman: bool = False) -> str:
+    if roman and lang == "ur":
+        return "hi-IN"
     return VOICE_LANG_MAP.get(lang, "en-US")

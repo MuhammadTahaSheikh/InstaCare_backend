@@ -67,12 +67,12 @@ async def chat(req: ChatRequest):
         reply, engine, lang, vlang = dynamic
         return ChatResponse(reply=reply, engine=engine, language=lang, voice_lang=vlang)
 
-    reply, lang = bot.chat(payload)
+    reply, lang, roman = bot.chat(payload)
     return ChatResponse(
         reply=reply,
         engine="smart-rules",
         language=lang,
-        voice_lang=voice_lang_for(lang),
+        voice_lang=voice_lang_for(lang, roman=roman),
     )
 
 

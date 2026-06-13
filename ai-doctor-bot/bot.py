@@ -10,21 +10,106 @@ from i18n import (
     is_language_switch_request,
     resolve_language,
     specialty_name,
+    topic_name,
     t,
     voice_lang_for,
     detect_language_from_text,
+    reply_in_roman_urdu,
 )
 from knowledge import EMERGENCY_KEYWORDS, SPECIALTY_SLUGS, SYMPTOM_RULES
 
 URDU_EXTRA_KEYWORDS: dict[str, list[str]] = {
-    "headache": ["sar dard", "sir dard", "سر درد"],
-    "fever": ["bukhar", "بخار", "tap dik"],
-    "cough_cold": ["khansi", "zukam", "کھانسی", "گلا"],
-    "stomach": ["pet dard", "پیٹ", "qay", "ishal", "متلی"],
-    "skin": ["khujli", "خارش", "danay"],
+    "headache": ["sar dard", "sir dard", "sar ma dard", "sir ma dard", "sar mein dard", "سر درد"],
+    "fever": ["bukhar", "tap teek", "tap dik", "بخار"],
+    "cough_cold": ["khansi", "zukam", "gala kharab", "کھانسی", "گلا"],
+    "stomach": ["pet dard", "pait dard", "pet ma dard", "پیٹ", "qay", "ishal", "متلی"],
+    "skin": ["khujli", "kharish", "danay", "خارش"],
     "mental": ["pareshani", "tension", "udaasi", "پریشانی"],
-    "dental": ["daant", "dant", "دانت"],
-    "urinary": ["peshab", "پیشاب", "jlana"],
+    "dental": ["daant", "dant", "daant dard", "دانت"],
+    "urinary": ["peshab", "peshab mein", "پیشاب", "jlana"],
+}
+
+ROMAN_SYMPTOM_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+    "headache": [
+        re.compile(r"sar\s*(ma|me|men|main|mein|may)?\s*dard", re.I),
+        re.compile(r"sir\s*(ma|me|men|main|mein|may)?\s*dard", re.I),
+        re.compile(r"(sar|sir|head).{0,25}dard", re.I),
+    ],
+    "fever": [
+        re.compile(r"\bbukhar\b", re.I),
+        re.compile(r"tap\s*(teek|tik|dik)", re.I),
+    ],
+    "cough_cold": [
+        re.compile(r"\b(khansi|zukam|zukaam)\b", re.I),
+        re.compile(r"gala\s*(kharab|dard|mein)", re.I),
+    ],
+    "stomach": [
+        re.compile(r"pet\s*(ma|me|men|main|mein|may)?\s*dard", re.I),
+        re.compile(r"pait\s*(ma|me|men|main|mein|may)?\s*dard", re.I),
+        re.compile(r"(pet|pait).{0,20}dard", re.I),
+    ],
+    "skin": [re.compile(r"\b(khujli|kharish|kharash)\b", re.I)],
+    "mental": [re.compile(r"\b(pareshani|tension|udaasi|depression)\b", re.I)],
+    "dental": [re.compile(r"da?ant\s*(ma|me|men|main|mein|may)?\s*dard", re.I)],
+    "urinary": [re.compile(r"peshab\s*(mein|ma|me)?\s*(dard|jlana|jalan)", re.I)],
+}
+
+ROMAN_FOLLOWUP_MARKERS: dict[tuple[str, str], list[str]] = {
+    ("headache", "duration"): ["din se", " se ", "ho rha", "ho rhi", "ho raha", "ghante", "since", "started", "kal se"],
+    ("headache", "severity"): ["1 se 10", "1-10", "shadeed", "halka", "severe", "mild", "scale", "out of 10"],
+    ("headache", "fever"): ["bukhar", "fever", "gardan", "neck"],
+    ("headache", "vision"): ["nazar", "vision", "roshni", "mutli", "nausea"],
+    ("fever", "duration"): ["din se", " se ", "ho rha", "kal se", "since", "days"],
+    ("fever", "temperature"): ["degree", "102", "103", "104", "celsius", "tap", "temp"],
+    ("fever", "other"): ["khansi", "gala", "jism", "kharish", "cough", "rash"],
+    ("cough_cold", "duration"): ["din se", " se ", "ho rha", "since"],
+    ("cough_cold", "type"): ["khushk", "dry", "balgham", "phlegm"],
+    ("cough_cold", "breathing"): ["saans", "breath", "ghonghat"],
+    ("stomach", "duration"): ["din se", " se ", "ho rha", "since"],
+    ("stomach", "location"): ["opar", "neeche", "upar", "upper", "lower"],
+    ("stomach", "severity"): ["qay", "vomit", "isha", "diarrhea", "ulti"],
+}
+
+ROMAN_URDU_QUESTIONS: dict[str, dict[str, str]] = {
+    "headache": {
+        "duration": "Yeh sar dard kab se hai — ghanton, dinon ya zyada?",
+        "severity": "1 se 10 tak dard kitni shadeed hai?",
+        "fever": "Kya bukhar ya gardan mein akrahat bhi hai?",
+        "vision": "Kya nazar mein tabdeeli, matli ya roshni se takleef hai?",
+    },
+    "fever": {
+        "duration": "Bukhar kitne dinon se hai?",
+        "temperature": "Tap ka thermometer check kiya? Kitna tha?",
+        "other": "Khansi, gale mein dard, jism dard ya kharish bhi hai?",
+    },
+    "cough_cold": {
+        "duration": "Yeh alamat kab se hain?",
+        "type": "Khansi khushk hai ya balgham ke sath?",
+        "breathing": "Saans lene mein mushkil ya ghonghat?",
+    },
+    "stomach": {
+        "duration": "Pet ka masla kab se hai?",
+        "location": "Dard kahan hai — upar, neeche, ya poore pet mein?",
+        "severity": "Dard musalsal hai ya aata jata? Qay ya ishaal?",
+    },
+    "skin": {
+        "duration": "Jild ka masla kab se hai?",
+        "spread": "Ek jagah hai ya phail raha hai?",
+        "trigger": "Kya koi naya sabun, khana ya dawa use ki?",
+    },
+    "mental": {
+        "duration": "Kitne arsay se aisa mehsoos ho raha hai?",
+        "severity": "Kaam aur neend par asar ho raha hai?",
+        "safety": "Kya kabhi apne nuksan ke khayal aaye? (Aapki safety zaroori hai.)",
+    },
+    "dental": {
+        "duration": "Daant dard kab se hai?",
+        "type": "Garam/thanda khane se dard? Masoodhon mein soojan?",
+    },
+    "urinary": {
+        "duration": "Peshab ki takleef kab se hai?",
+        "symptoms": "Peshab mein khoon, bukhar ya kamar dard?",
+    },
 }
 
 URDU_QUESTIONS: dict[str, dict[str, str]] = {
@@ -74,6 +159,12 @@ URDU_EMERGENCY = [
     ("saans nahi", "سانس کی شدید تکلیف — فوراً ایمرجنسی۔"),
     ("khoon", "شدید خون بہنا — فوراً ایمرجنسی۔"),
     ("behosh", "بے ہوشی — فوراً ایمرجنسی کال کریں۔"),
+]
+
+ROMAN_FOLLOWUPS = [
+    "Barah e karam apni umar aur jins batayein.",
+    "Kya aap koi dawa le rahe hain ya sugar/BP jaise masail hain?",
+    "Kya aap ne kuch azma kar dekha alamat kam karne ke liye?",
 ]
 
 URDU_FOLLOWUPS = [
@@ -144,19 +235,19 @@ def _has_medical_intent(text: str) -> bool:
     return any(w in normalized for w in medical_words)
 
 
-def _handle_no_symptoms(user_messages: list[dict], lang: Lang) -> str:
+def _handle_no_symptoms(user_messages: list[dict], lang: Lang, *, roman: bool = False) -> str:
     last = user_messages[-1]["content"]
 
     if _is_greeting(last):
-        return t("greeting_reply", lang)
+        return t("greeting_reply", lang, roman=roman)
 
     if _is_thanks(last):
-        return t("thanks_reply", lang)
+        return t("thanks_reply", lang, roman=roman)
 
     if len(user_messages) == 1:
-        return t("no_symptoms_first", lang)
+        return t("no_symptoms_first", lang, roman=roman)
 
-    return t("unclear_reply", lang)
+    return t("unclear_reply", lang, roman=roman)
 
 
 def _all_user_text(messages: list[dict]) -> str:
@@ -182,33 +273,49 @@ def _detect_emergency(text: str, lang: Lang) -> str | None:
 
 def _match_rules(text: str) -> list[dict]:
     normalized = _normalize(text)
-    matched = []
+    matched: list[dict] = []
+    seen: set[str] = set()
     for rule in SYMPTOM_RULES:
+        if rule["id"] in seen:
+            continue
         keywords = list(rule["keywords"]) + URDU_EXTRA_KEYWORDS.get(rule["id"], [])
         if any(kw in normalized for kw in keywords):
             matched.append(rule)
+            seen.add(rule["id"])
+            continue
+        for pattern in ROMAN_SYMPTOM_PATTERNS.get(rule["id"], []):
+            if pattern.search(normalized):
+                matched.append(rule)
+                seen.add(rule["id"])
+                break
     return matched
 
 
-def _get_question(rule_id: str, topic: str, lang: Lang, rule: dict) -> str | None:
+def _get_question(rule_id: str, topic: str, lang: Lang, rule: dict, *, roman: bool = False) -> str | None:
+    if roman and rule_id in ROMAN_URDU_QUESTIONS and topic in ROMAN_URDU_QUESTIONS[rule_id]:
+        return ROMAN_URDU_QUESTIONS[rule_id][topic]
     if lang == "ur" and rule_id in URDU_QUESTIONS and topic in URDU_QUESTIONS[rule_id]:
         return URDU_QUESTIONS[rule_id][topic]
     return rule.get("questions", {}).get(topic)
 
 
-def _topic_covered(full_text: str, markers: list[str]) -> bool:
-    return any(m in _normalize(full_text) for m in markers)
+def _topic_covered(full_text: str, markers: list[str], rule_id: str = "", topic: str = "") -> bool:
+    normalized = _normalize(full_text)
+    if any(m in normalized for m in markers):
+        return True
+    extra = ROMAN_FOLLOWUP_MARKERS.get((rule_id, topic), [])
+    return any(m in normalized for m in extra)
 
 
-def _next_question(matched_rules: list[dict], full_text: str, lang: Lang) -> str | None:
+def _next_question(matched_rules: list[dict], full_text: str, lang: Lang, *, roman: bool = False) -> str | None:
     for rule in matched_rules:
         for topic, markers in rule.get("follow_ups", []):
-            if not _topic_covered(full_text, markers):
-                q = _get_question(rule["id"], topic, lang, rule)
+            if not _topic_covered(full_text, markers, rule["id"], topic):
+                q = _get_question(rule["id"], topic, lang, rule, roman=roman)
                 if q:
                     return q
 
-    followups = URDU_FOLLOWUPS if lang == "ur" else EN_FOLLOWUPS
+    followups = ROMAN_FOLLOWUPS if roman else (URDU_FOLLOWUPS if lang == "ur" else EN_FOLLOWUPS)
     asked = 0
     normalized = _normalize(full_text)
     if any(m in normalized for m in ["age", "umar", "saal", "years old", "male", "female", "jins"]):
@@ -223,15 +330,24 @@ def _next_question(matched_rules: list[dict], full_text: str, lang: Lang) -> str
     return None
 
 
-def _merge_rules(rules: list[dict], lang: Lang) -> dict:
+def _merge_rules(rules: list[dict], lang: Lang, *, roman: bool = False) -> dict:
     if not rules:
+        if roman:
+            return {
+                "conditions": [],
+                "medicines": [],
+                "tests": [],
+                "precautions": ["Alamat par nazar rakhein"],
+                "self_care": ["Aaram karein aur pani piyein", "Alamat barhein to doctor dikhayein"],
+                "specialty": "general-physician",
+            }
         return {
             "conditions": [],
             "medicines": [],
             "tests": [],
             "precautions": ["علامات پر نظر رکھیں"] if lang == "ur" else ["Monitor your symptoms closely"],
             "self_care": (
-                ["آرام کریں اور پani پئیں", "علامات بڑھیں تو ڈاکٹر دکھائیں"]
+                ["آرام کریں اور پانی پئیں", "علامات بڑھیں تو ڈاکٹر دکھائیں"]
                 if lang == "ur"
                 else ["Rest and stay hydrated", "See a doctor if symptoms worsen"]
             ),
@@ -263,43 +379,46 @@ def _merge_rules(rules: list[dict], lang: Lang) -> dict:
     }
 
 
-def _likelihood_label(value: str, lang: Lang) -> str:
+def _likelihood_label(value: str, lang: Lang, *, roman: bool = False) -> str:
+    if roman:
+        mapping = {"low": "kam", "moderate": "darmiyani", "high": "zyada"}
+        return mapping.get(value, value)
     mapping = {"low": {"ur": "کم", "en": "low"}, "moderate": {"ur": "درمیانی", "en": "moderate"}, "high": {"ur": "زیادہ", "en": "high"}}
     return mapping.get(value, {}).get(lang, value)
 
 
-def _build_guidance(matched_rules: list[dict], lang: Lang) -> str:
-    data = _merge_rules(matched_rules, lang)
-    lines = [t("guidance_intro", lang), "", t("possible_conditions", lang)]
+def _build_guidance(matched_rules: list[dict], lang: Lang, *, roman: bool = False) -> str:
+    data = _merge_rules(matched_rules, lang, roman=roman)
+    lines = [t("guidance_intro", lang, roman=roman), "", t("possible_conditions", lang, roman=roman)]
 
     for c in data["conditions"]:
-        like = _likelihood_label(c.get("likelihood", "moderate"), lang)
+        like = _likelihood_label(c.get("likelihood", "moderate"), lang, roman=roman)
         lines.append(f"• **{c['name']}** ({like}) — {c['note']}")
 
     if data["medicines"]:
-        lines.extend(["", t("otc_heading", lang)])
+        lines.extend(["", t("otc_heading", lang, roman=roman)])
         for m in data["medicines"]:
             lines.append(f"• **{m['name']}** ({m['type']}): {m['usage']}. {m['precaution']}")
 
     if data["tests"]:
-        lines.extend(["", t("tests_heading", lang)])
+        lines.extend(["", t("tests_heading", lang, roman=roman)])
         for test in data["tests"]:
             lines.append(f"• {test}")
 
     if data["precautions"]:
-        lines.extend(["", t("precautions_heading", lang)])
+        lines.extend(["", t("precautions_heading", lang, roman=roman)])
         for p in data["precautions"]:
             lines.append(f"• {p}")
 
     if data["self_care"]:
-        lines.extend(["", t("self_care_heading", lang)])
+        lines.extend(["", t("self_care_heading", lang, roman=roman)])
         for s in data["self_care"]:
             lines.append(f"• {s}")
 
-    spec = specialty_name(data["specialty"], lang)
-    lines.extend(["", t("specialist_recommend", lang, specialty=spec)])
-    lines.extend(["", f"⚠️ {t('disclaimer', lang)}"])
-    lines.append(t("end_consultation_hint", lang))
+    spec = specialty_name(data["specialty"], lang, roman=roman)
+    lines.extend(["", t("specialist_recommend", lang, roman=roman, specialty=spec)])
+    lines.extend(["", f"⚠️ {t('disclaimer', lang, roman=roman)}"])
+    lines.append(t("end_consultation_hint", lang, roman=roman))
     return "\n".join(lines)
 
 
@@ -317,62 +436,75 @@ def _extract_symptoms(user_text: str, matched_rules: list[dict]) -> list[str]:
 
 
 class AiDoctorBot:
-    def chat(self, messages: list[dict[str, str]]) -> tuple[str, Lang]:
+    def chat(self, messages: list[dict[str, str]]) -> tuple[str, Lang, bool]:
         lang = resolve_language(messages)
         user_messages = [m for m in messages if m.get("role") == "user"]
 
         if not user_messages:
-            return t("opening", lang), lang
+            return t("opening", lang), lang, False
 
         last_user = user_messages[-1]["content"]
         lang = detect_language_from_text(last_user) or resolve_language(messages)
+        roman = lang == "ur" and reply_in_roman_urdu(last_user)
 
         switch = is_language_switch_request(last_user)
         if switch:
             lang = switch
+            roman = lang == "ur" and reply_in_roman_urdu(last_user)
             if not _match_rules(_all_user_text(messages)):
-                return t("lang_switched", lang), lang
+                return t("lang_switched", lang, roman=roman), lang, roman
 
         user_text = _all_user_text(messages)
         full_text = _all_text(messages)
+        matched = _match_rules(user_text)
 
         emergency = _detect_emergency(user_text, lang)
         if emergency:
             return (
-                f"{t('emergency_header', lang)}\n\n{emergency}\n\n"
-                f"{t('emergency_footer', lang)}\n\n{t('disclaimer', lang)}"
-            ), lang
+                f"{t('emergency_header', lang, roman=roman)}\n\n{emergency}\n\n"
+                f"{t('emergency_footer', lang, roman=roman)}\n\n{t('disclaimer', lang, roman=roman)}"
+            ), lang, roman
 
         from intents import classify_intent, get_conversational_response
 
         intent = classify_intent(last_user, messages)
-        if intent != "medical":
-            conv = get_conversational_response(intent, lang, messages)
+        if intent != "medical" and not matched:
+            conv = get_conversational_response(intent, lang, messages, roman=roman)
             if conv:
-                return conv, lang
+                return conv, lang, roman
 
-        matched = _match_rules(user_text)
         if not matched:
-            conv = get_conversational_response("unclear", lang, messages)
-            return conv or f"{t('no_symptoms_first', lang)}\n\n⚠️ {t('disclaimer', lang)}", lang
+            conv = get_conversational_response("unclear", lang, messages, roman=roman)
+            return conv or f"{t('no_symptoms_first', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}", lang, roman
 
-        question = _next_question(matched, full_text, lang)
-        if question and len(user_messages) <= 3:
-            topic = TOPIC_NAMES.get(matched[0]["id"], {}).get(lang, matched[0]["id"])
-            prefix = t("prefix_symptom", lang, topic=topic) if len(user_messages) == 1 else t("prefix_see", lang)
-            return f"{prefix}{question}\n\n⚠️ {t('disclaimer', lang)}", lang
+        question = _next_question(matched, full_text, lang, roman=roman)
+        if question and len(user_messages) <= 5:
+            topic = topic_name(matched[0]["id"], lang, roman=roman)
+            prefix = t("prefix_symptom", lang, roman=roman, topic=topic) if len(user_messages) == 1 else t("prefix_see", lang, roman=roman)
+            return f"{prefix}{question}\n\n⚠️ {t('disclaimer', lang, roman=roman)}", lang, roman
 
-        return _build_guidance(matched, lang), lang
+        return _build_guidance(matched, lang, roman=roman), lang, roman
 
     def summarize(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         lang = resolve_language(messages)
+        user_messages = [m for m in messages if m.get("role") == "user"]
+        last_user = user_messages[-1]["content"] if user_messages else ""
+        roman = lang == "ur" and reply_in_roman_urdu(last_user)
         user_text = _all_user_text(messages)
         matched = _match_rules(user_text)
-        data = _merge_rules(matched, lang)
+        data = _merge_rules(matched, lang, roman=roman)
         symptoms = _extract_symptoms(user_text, matched)
         emergency = _detect_emergency(user_text, lang)
 
-        if lang == "ur":
+        if roman:
+            summary = (
+                f"Is mashware mein mareez ne {', '.join(symptoms[:3]) or 'alamat'} bataye. "
+                "Mumkin wajohat aur OTC dawain maloomati tor par batayi gain — yeh tashkhees nahin. "
+                "BestechCare par qualified doctor se muaina zaroori hai."
+                if matched
+                else "Sehat ke masail bataye gaye. Aam rehnumai di gayi — doctor se muaina karwayen."
+            )
+        elif lang == "ur":
             summary = (
                 f"اس مشاورت میں مریض نے {', '.join(symptoms[:3]) or 'علامات'} بیان کیں۔ "
                 "ممکنہ وجوہات اور OTC دوائیں معلوماتی طور پر بتائی گئیں — یہ تشخیص نہیں۔ "
@@ -399,9 +531,9 @@ class AiDoctorBot:
             "urgent_care_required": bool(emergency),
             "urgent_care_reason": emergency,
             "recommended_specialty_slug": data["specialty"],
-            "disclaimer": t("disclaimer", lang),
+            "disclaimer": t("disclaimer", lang, roman=roman),
             "language": lang,
-            "voice_lang": voice_lang_for(lang),
+            "voice_lang": voice_lang_for(lang, roman=roman),
         }
 
 
