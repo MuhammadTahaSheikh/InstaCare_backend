@@ -559,6 +559,14 @@ class AiDoctorBot:
         from intents import classify_intent, get_conversational_response
 
         intent = classify_intent(last_user, messages)
+        conversational = frozenset({"identity", "greeting", "capabilities", "thanks", "goodbye", "off_topic"})
+
+        # Greeting/thanks/etc. on the latest message always wins over old symptom context
+        if intent in conversational:
+            conv = get_conversational_response(intent, lang, messages, roman=roman)
+            if conv:
+                return conv, lang, roman
+
         if intent != "medical" and not matched:
             conv = get_conversational_response(intent, lang, messages, roman=roman)
             if conv:
