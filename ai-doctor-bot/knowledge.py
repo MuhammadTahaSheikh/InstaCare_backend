@@ -34,7 +34,10 @@ EMERGENCY_KEYWORDS = [
 SYMPTOM_RULES = [
     {
         "id": "headache",
-        "keywords": ["headache", "head pain", "migraine", "head ache", "throbbing head"],
+        "keywords": [
+            "headache", "headaches", "head pain", "migraine", "head ache", "throbbing head",
+            "pain in my head", "pain in head", "my head hurts", "head hurts", "head hurting",
+        ],
         "follow_ups": [
             ("duration", ["how long", "since when", "started", "days ago", "hours"]),
             ("severity", ["scale", "severe", "mild", "worst", "1-10", "intensity"]),

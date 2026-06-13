@@ -6,6 +6,7 @@ import re
 from typing import Literal
 
 from i18n import Lang, t
+from text_utils import normalize_text
 
 Intent = Literal[
     "identity",
@@ -66,8 +67,9 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 MEDICAL_RE = re.compile(
-    r"(pain|hurt|ache|fever|cough|vomit|nausea|rash|symptom|sick|ill|swelling|bleeding|"
-    r"dard|bukhar|khansi|takleef|beemar|dawai|headache|stomach|diarrhea|"
+    r"(pain|hurt|ache|aches|aching|hurts|hurting|sore|fever|cough|vomit|nausea|rash|symptom|sick|ill|"
+    r"swelling|bleeding|dard|bukhar|khansi|takleef|beemar|dawai|headache|stomach|diarrhea|"
+    r"head\s*pain|head\s*hurt|my\s+head|pain\s+in\s+(my\s+)?head|"
     r"\bsar\b|\bsir\b|\bpet\b|\bpait\b|ho rha|ho rahi|"
     r"تکلیف|درد|بخار|علامات|بیمار|سر درد|پیٹ|کھانسی)",
     re.I,
@@ -190,7 +192,7 @@ RESPONSES_ROMAN: dict[str, str] = {
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text.lower().strip())
+    return normalize_text(text)
 
 
 def _count_prior_intent(messages: list[dict], intent: str) -> int:
@@ -210,7 +212,7 @@ def classify_intent(text: str, messages: list[dict] | None = None) -> Intent:
         if pattern.search(normalized) or pattern.search(text):
             return name  # type: ignore
 
-    if MEDICAL_RE.search(text):
+    if MEDICAL_RE.search(normalized) or MEDICAL_RE.search(text):
         return "medical"
 
     if len(normalized.split()) <= 12:
@@ -263,7 +265,7 @@ def get_conversational_response(intent: Intent, lang: Lang, messages: list[dict]
         return f"{body}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
 
     if intent == "unclear":
-        if _count_prior_intent(messages, "unclear") >= 2:
+        if _count_prior_intent(messages, "unclear") >= 3:
             if roman:
                 nudge = RESPONSES_ROMAN["unclear_nudge"]
             else:

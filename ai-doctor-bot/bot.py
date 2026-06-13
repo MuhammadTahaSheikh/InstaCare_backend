@@ -17,6 +17,7 @@ from i18n import (
     reply_in_roman_urdu,
 )
 from knowledge import EMERGENCY_KEYWORDS, SPECIALTY_SLUGS, SYMPTOM_RULES
+from text_utils import normalize_text
 
 URDU_EXTRA_KEYWORDS: dict[str, list[str]] = {
     "headache": ["sar dard", "sir dard", "sar ma dard", "sir ma dard", "sar mein dard", "سر درد"],
@@ -53,6 +54,66 @@ ROMAN_SYMPTOM_PATTERNS: dict[str, list[re.Pattern[str]]] = {
     "dental": [re.compile(r"da?ant\s*(ma|me|men|main|mein|may)?\s*dard", re.I)],
     "urinary": [re.compile(r"peshab\s*(mein|ma|me)?\s*(dard|jlana|jalan)", re.I)],
 }
+
+ENGLISH_SYMPTOM_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+    "headache": [
+        re.compile(r"head\s*ache", re.I),
+        re.compile(r"head\s*pain", re.I),
+        re.compile(r"pain\s+(in\s+)?(my\s+)?head", re.I),
+        re.compile(r"(my\s+)?head\s+(hurts|hurting|aches|aching|painful)", re.I),
+        re.compile(r"migraine", re.I),
+    ],
+    "fever": [
+        re.compile(r"\bfever\b", re.I),
+        re.compile(r"high\s*temp", re.I),
+        re.compile(r"\btemperature\b", re.I),
+        re.compile(r"feeling\s+(hot|warm)", re.I),
+        re.compile(r"body\s*ache", re.I),
+    ],
+    "cough_cold": [
+        re.compile(r"\bcough", re.I),
+        re.compile(r"runny\s+nose", re.I),
+        re.compile(r"sore\s+throat", re.I),
+        re.compile(r"\b(cold|flu)\b", re.I),
+        re.compile(r"congestion", re.I),
+    ],
+    "stomach": [
+        re.compile(r"stomach\s*(pain|ache|hurts|hurting)", re.I),
+        re.compile(r"abdominal\s*pain", re.I),
+        re.compile(r"pain\s+(in\s+)?(my\s+)?(stomach|belly|abdomen|tummy)", re.I),
+        re.compile(r"\b(nausea|vomit|vomiting|diarrhea|diarrhoea|indigestion|heartburn|acidity)\b", re.I),
+    ],
+    "skin": [
+        re.compile(r"\b(rash|itching|itchy|hives|eczema|acne)\b", re.I),
+    ],
+    "mental": [
+        re.compile(r"\b(anxiety|depression|stress|panic|insomnia|cannot sleep)\b", re.I),
+    ],
+    "dental": [
+        re.compile(r"tooth\s*(pain|ache|hurts)", re.I),
+        re.compile(r"dental\s*pain", re.I),
+        re.compile(r"teeth\s*(pain|hurt)", re.I),
+    ],
+    "urinary": [
+        re.compile(r"urin(ary|e)\s*(pain|problem|infection)", re.I),
+        re.compile(r"burning\s+(when\s+)?(i\s+)?(urinate|pee)", re.I),
+        re.compile(r"frequent\s+urination", re.I),
+    ],
+}
+
+PAIN_WORDS_RE = re.compile(
+    r"\b(pain|hurt|ache|aches|aching|hurts|hurting|sore|painful)\b", re.I
+)
+
+BODY_PART_RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\b(head|skull|forehead|temples?)\b", re.I), "headache"),
+    (re.compile(r"\b(stomach|belly|abdomen|tummy|gut)\b", re.I), "stomach"),
+    (re.compile(r"\b(tooth|teeth|dental|gum)\b", re.I), "dental"),
+    (re.compile(r"\b(skin|rash|itch)\b", re.I), "skin"),
+    (re.compile(r"\b(chest|cough|throat|nose)\b", re.I), "cough_cold"),
+    (re.compile(r"\b(urin|pee|bladder|kidney)\b", re.I), "urinary"),
+    (re.compile(r"\b(fever|temp|chills)\b", re.I), "fever"),
+]
 
 ROMAN_FOLLOWUP_MARKERS: dict[tuple[str, str], list[str]] = {
     ("headache", "duration"): ["din se", " se ", "ho rha", "ho rhi", "ho raha", "ghante", "since", "started", "kal se"],
@@ -203,7 +264,7 @@ THANKS_RE = re.compile(
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text.lower().strip())
+    return normalize_text(text)
 
 
 def _is_greeting(text: str) -> bool:
@@ -271,6 +332,25 @@ def _detect_emergency(text: str, lang: Lang) -> str | None:
     return None
 
 
+def _infer_rules_from_context(text: str) -> list[dict]:
+    """Match pain + body part phrasing that keyword lists miss (e.g. 'pain in my head')."""
+    normalized = _normalize(text)
+    if not PAIN_WORDS_RE.search(normalized) and "fever" not in normalized and "cough" not in normalized:
+        return []
+
+    inferred: list[dict] = []
+    seen: set[str] = set()
+    for pattern, rule_id in BODY_PART_RULES:
+        if rule_id in seen:
+            continue
+        if pattern.search(normalized):
+            rule = next((r for r in SYMPTOM_RULES if r["id"] == rule_id), None)
+            if rule:
+                inferred.append(rule)
+                seen.add(rule_id)
+    return inferred
+
+
 def _match_rules(text: str) -> list[dict]:
     normalized = _normalize(text)
     matched: list[dict] = []
@@ -283,11 +363,17 @@ def _match_rules(text: str) -> list[dict]:
             matched.append(rule)
             seen.add(rule["id"])
             continue
-        for pattern in ROMAN_SYMPTOM_PATTERNS.get(rule["id"], []):
+        for pattern in (
+            ROMAN_SYMPTOM_PATTERNS.get(rule["id"], [])
+            + ENGLISH_SYMPTOM_PATTERNS.get(rule["id"], [])
+        ):
             if pattern.search(normalized):
                 matched.append(rule)
                 seen.add(rule["id"])
                 break
+
+    if not matched:
+        matched = _infer_rules_from_context(text)
     return matched
 
 
@@ -474,6 +560,10 @@ class AiDoctorBot:
                 return conv, lang, roman
 
         if not matched:
+            if intent == "medical" or _has_medical_intent(last_user):
+                return (
+                    f"{t('no_symptoms_followup', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
+                ), lang, roman
             conv = get_conversational_response("unclear", lang, messages, roman=roman)
             return conv or f"{t('no_symptoms_first', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}", lang, roman
 
