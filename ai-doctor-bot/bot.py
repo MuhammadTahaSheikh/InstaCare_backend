@@ -15,7 +15,7 @@ from i18n import (
     voice_lang_for,
     detect_language_from_text,
     reply_in_roman_urdu,
-    resolve_roman_urdu,
+    resolve_reply_style,
 )
 from knowledge import EMERGENCY_KEYWORDS, SPECIALTY_SLUGS, SYMPTOM_RULES
 from text_utils import normalize_text
@@ -532,17 +532,14 @@ class AiDoctorBot:
             return {"kind": "opening", "lang": lang, "roman": False, "messages": messages}
 
         last_user = user_messages[-1]["content"]
-        lang = detect_language_from_text(last_user) or resolve_language(messages)
-        roman = resolve_roman_urdu(messages) or (lang == "ur" and reply_in_roman_urdu(last_user))
-        if roman:
-            lang = "ur"
+        lang, roman = resolve_reply_style(last_user, messages)
 
         switch = is_language_switch_request(last_user)
         if switch:
             lang = switch
-            roman = resolve_roman_urdu(messages) or (lang == "ur" and reply_in_roman_urdu(last_user))
-            if roman:
-                lang = "ur"
+            lang, roman = resolve_reply_style(last_user, messages)
+            if switch == "ur" and reply_in_roman_urdu(last_user):
+                roman = True
             if not _match_rules(_all_user_text(messages)):
                 return {
                     "kind": "lang_switch",
@@ -590,10 +587,17 @@ class AiDoctorBot:
         if not matched:
             return base
 
+        from composer import is_medicine_request
+
+        medicine_request = is_medicine_request(last_user)
         question = _next_question(matched, full_text, lang, roman=roman)
-        if question and len(user_messages) <= 5:
+        data = _merge_rules(matched, lang, roman=roman)
+        base["topic"] = topic_name(matched[0]["id"], lang, roman=roman)
+        base["guidance_data"] = data
+        base["medicine_request"] = medicine_request
+
+        if question and len(user_messages) <= 5 and not (medicine_request and len(user_messages) >= 4):
             base["next_question"] = question
-            base["topic"] = topic_name(matched[0]["id"], lang, roman=roman)
             return base
 
         base["guidance_ready"] = True
@@ -613,9 +617,7 @@ class AiDoctorBot:
         lang = resolve_language(messages)
         user_messages = [m for m in messages if m.get("role") == "user"]
         last_user = user_messages[-1]["content"] if user_messages else ""
-        roman = resolve_roman_urdu(messages) or (lang == "ur" and reply_in_roman_urdu(last_user))
-        if roman:
-            lang = "ur"
+        lang, roman = resolve_reply_style(last_user, messages) if last_user else ("en", False)
         user_text = _all_user_text(messages)
         matched = _match_rules(user_text)
         data = _merge_rules(matched, lang, roman=roman)

@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from i18n import Lang, resolve_language, resolve_roman_urdu, voice_lang_for
+from i18n import Lang, resolve_reply_style, voice_lang_for
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
@@ -137,10 +137,15 @@ async def dynamic_chat(
     analysis: dict[str, Any] | None = None,
 ) -> tuple[str, str, Lang, str] | None:
     """Try Groq then Ollama. Returns (reply, engine, lang, voice_lang) or None."""
-    lang = analysis.get("lang") if analysis else resolve_language(messages)
-    roman = analysis.get("roman", False) if analysis else resolve_roman_urdu(messages)
-    if roman:
-        lang = "ur"
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    last_user = user_messages[-1]["content"] if user_messages else ""
+    if analysis:
+        lang = analysis.get("lang", "en")
+        roman = analysis.get("roman", False)
+    elif last_user:
+        lang, roman = resolve_reply_style(last_user, messages)
+    else:
+        lang, roman = "en", False
 
     reply = await _call_groq(messages, analysis)
     if reply:

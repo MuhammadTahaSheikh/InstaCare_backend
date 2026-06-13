@@ -336,15 +336,19 @@ def reply_in_roman_urdu(text: str) -> bool:
     return _looks_roman_urdu(text)
 
 
-def resolve_roman_urdu(messages: list[dict]) -> bool:
-    """Use recent user messages to keep Roman Urdu replies in a conversation."""
-    user_messages = [m for m in messages if m.get("role") == "user"]
-    if not user_messages:
-        return False
-    for msg in reversed(user_messages[-3:]):
-        if reply_in_roman_urdu(msg.get("content", "")):
-            return True
-    return False
+def resolve_reply_style(last_user: str, messages: list[dict]) -> tuple[Lang, bool]:
+    """Reply language/script follows the patient's latest message."""
+    if reply_in_roman_urdu(last_user):
+        return "ur", True
+    detected = detect_language_from_text(last_user)
+    if detected == "en":
+        return "en", False
+    if detected == "ur":
+        return "ur", URDU_SCRIPT_RE.search(last_user) is not None
+    if detected:
+        return detected, False
+    hist = resolve_language(messages)
+    return hist, False
 
 
 def _score_roman_urdu(text: str) -> int:

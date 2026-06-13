@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from i18n import Lang, t, voice_lang_for
+
+MEDICINE_ASK_RE = re.compile(
+    r"(suggest|recommend|give|tell|prescribe).{0,40}(medicine|medic|medication|dawai|tablet|pill|syrup)|"
+    r"(any|koi|some)\s+(medicine|dawai|medic|medication)|"
+    r"(medicine|dawai|medication)\s+(please|suggest|recommend|chahiye|dedo|batao|bata)",
+    re.I,
+)
+
+
+def is_medicine_request(text: str) -> bool:
+    return bool(MEDICINE_ASK_RE.search(text or ""))
 
 
 def compose_reply(analysis: dict[str, Any]) -> str:
@@ -29,6 +41,10 @@ def compose_reply(analysis: dict[str, Any]) -> str:
         return _capabilities(analysis)
     if intent == "off_topic":
         return _off_topic(analysis)
+    if analysis.get("medicine_request") and analysis.get("guidance_ready"):
+        return _medicine_guidance(analysis)
+    if analysis.get("medicine_request") and analysis.get("next_question"):
+        return _medicine_partial(analysis)
     if analysis.get("guidance_ready"):
         return _guidance(analysis)
     if analysis.get("next_question"):
@@ -239,6 +255,57 @@ def _symptom_followup(analysis: dict[str, Any]) -> str:
 
 def _guidance(analysis: dict[str, Any]) -> str:
     return analysis["guidance_text"]
+
+
+def _medicine_guidance(analysis: dict[str, Any]) -> str:
+    data = analysis.get("guidance_data") or {}
+    topic = analysis.get("topic") or "symptoms"
+    roman = analysis["roman"]
+    meds = data.get("medicines", [])
+
+    if roman:
+        lines = [
+            f"Bilkul! Aap ke **{topic}** ke liye Pakistan mein yeh bina nuskhe ki dawain "
+            "aam tor par use hoti hain (sirf maloomat — tashkhees nahin):",
+        ]
+        closer = "Aram karein, pani piyein, aur agar alamat barhein ya 3 din se zyada hon to doctor dikhayein."
+    else:
+        lines = [
+            f"Sure! For your **{topic}**, these OTC medicines are commonly used in Pakistan "
+            "(informational only — not a diagnosis):",
+        ]
+        closer = "Rest, stay hydrated, and see a doctor if symptoms worsen or last more than a few days."
+
+    for m in meds:
+        lines.append(f"• **{m['name']}** ({m['type']}): {m['usage']}. {m['precaution']}")
+
+    if data.get("precautions"):
+        lines.append("")
+        lines.append("**Precautions:**" if not roman else "**Ehtiyat:**")
+        for p in data["precautions"][:3]:
+            lines.append(f"• {p}")
+
+    lines.extend(["", closer, "", f"⚠️ {_disclaimer(analysis)}"])
+    return "\n".join(lines)
+
+
+def _medicine_partial(analysis: dict[str, Any]) -> str:
+    topic = analysis.get("topic") or "symptoms"
+    question = analysis["next_question"]
+    roman = analysis["roman"]
+
+    if roman:
+        ack = (
+            f"Main dawai suggest kar sakta hoon, lekin pehle **{topic}** ke bare mein "
+            f"thori aur detail chahiye taake sahi option bata sakoon:"
+        )
+    else:
+        ack = (
+            f"I can suggest medicines, but first I need a bit more about your **{topic}** "
+            f"so I can recommend the right options:"
+        )
+
+    return f"{ack}\n\n{question}\n\n⚠️ {_disclaimer(analysis)}"
 
 
 def _unclear(analysis: dict[str, Any]) -> str:
