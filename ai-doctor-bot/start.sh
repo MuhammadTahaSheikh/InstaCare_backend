@@ -2,7 +2,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+BACKEND_ROOT="$(cd "$ROOT/.." && pwd)"
 cd "$ROOT"
+
+# Load backend .env (GROQ_API_KEY, etc.) for dynamic LLM
+if [[ -f "$BACKEND_ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$BACKEND_ROOT/.env"
+  set +a
+fi
 
 if [[ ! -d venv ]]; then
   python3 -m venv venv

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from bot import bot
-from i18n import voice_lang_for
+from composer import compose_reply, voice_for_analysis
 from llm import dynamic_chat, get_llm_status
 
 app = FastAPI(title="BestechCare AI Doctor Bot", version="2.0.0")
@@ -61,18 +61,31 @@ async def health():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     payload = [m.model_dump() for m in req.messages]
+    analysis = bot.analyze(payload)
 
-    dynamic = await dynamic_chat(payload)
+    if analysis and analysis.get("kind") == "emergency":
+        reply = compose_reply(analysis)
+        return ChatResponse(
+            reply=reply,
+            engine="dynamic-composer",
+            language=analysis["lang"],
+            voice_lang=voice_for_analysis(analysis),
+        )
+
+    dynamic = await dynamic_chat(payload, analysis)
     if dynamic:
         reply, engine, lang, vlang = dynamic
         return ChatResponse(reply=reply, engine=engine, language=lang, voice_lang=vlang)
 
-    reply, lang, roman = bot.chat(payload)
+    if not analysis:
+        return ChatResponse(reply=compose_reply({"kind": "opening", "lang": "en", "roman": False}), engine="dynamic-composer")
+
+    reply = compose_reply(analysis)
     return ChatResponse(
         reply=reply,
-        engine="smart-rules",
-        language=lang,
-        voice_lang=voice_lang_for(lang, roman=roman),
+        engine="dynamic-composer",
+        language=analysis.get("lang", "en"),
+        voice_lang=voice_for_analysis(analysis),
     )
 
 

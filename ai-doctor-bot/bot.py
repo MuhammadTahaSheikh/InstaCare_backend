@@ -523,12 +523,13 @@ def _extract_symptoms(user_text: str, matched_rules: list[dict]) -> list[str]:
 
 
 class AiDoctorBot:
-    def chat(self, messages: list[dict[str, str]]) -> tuple[str, Lang, bool]:
+    def analyze(self, messages: list[dict[str, str]]) -> dict[str, Any] | None:
+        """Build context for dynamic reply (composer or LLM)."""
         lang = resolve_language(messages)
         user_messages = [m for m in messages if m.get("role") == "user"]
 
         if not user_messages:
-            return t("opening", lang), lang, False
+            return {"kind": "opening", "lang": lang, "roman": False, "messages": messages}
 
         last_user = user_messages[-1]["content"]
         lang = detect_language_from_text(last_user) or resolve_language(messages)
@@ -543,7 +544,13 @@ class AiDoctorBot:
             if roman:
                 lang = "ur"
             if not _match_rules(_all_user_text(messages)):
-                return t("lang_switched", lang, roman=roman), lang, roman
+                return {
+                    "kind": "lang_switch",
+                    "lang": lang,
+                    "roman": roman,
+                    "last_user": last_user,
+                    "messages": messages,
+                }
 
         user_text = _all_user_text(messages)
         full_text = _all_text(messages)
@@ -551,42 +558,56 @@ class AiDoctorBot:
 
         emergency = _detect_emergency(user_text, lang)
         if emergency:
-            return (
-                f"{t('emergency_header', lang, roman=roman)}\n\n{emergency}\n\n"
-                f"{t('emergency_footer', lang, roman=roman)}\n\n{t('disclaimer', lang, roman=roman)}"
-            ), lang, roman
+            return {
+                "kind": "emergency",
+                "lang": lang,
+                "roman": roman,
+                "emergency_text": emergency,
+                "last_user": last_user,
+                "messages": messages,
+            }
 
-        from intents import classify_intent, get_conversational_response
+        from intents import classify_intent
 
         intent = classify_intent(last_user, messages)
         conversational = frozenset({"identity", "greeting", "capabilities", "thanks", "goodbye", "off_topic"})
 
-        # Greeting/thanks/etc. on the latest message always wins over old symptom context
-        if intent in conversational:
-            conv = get_conversational_response(intent, lang, messages, roman=roman)
-            if conv:
-                return conv, lang, roman
+        base: dict[str, Any] = {
+            "kind": "chat",
+            "lang": lang,
+            "roman": roman,
+            "intent": intent,
+            "last_user": last_user,
+            "user_message_count": len(user_messages),
+            "matched": matched,
+            "messages": messages,
+            "has_medical_intent": _has_medical_intent(last_user),
+        }
 
-        if intent != "medical" and not matched:
-            conv = get_conversational_response(intent, lang, messages, roman=roman)
-            if conv:
-                return conv, lang, roman
+        if intent in conversational:
+            return base
 
         if not matched:
-            if intent == "medical" or _has_medical_intent(last_user):
-                return (
-                    f"{t('no_symptoms_followup', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}"
-                ), lang, roman
-            conv = get_conversational_response("unclear", lang, messages, roman=roman)
-            return conv or f"{t('no_symptoms_first', lang, roman=roman)}\n\n⚠️ {t('disclaimer', lang, roman=roman)}", lang, roman
+            return base
 
         question = _next_question(matched, full_text, lang, roman=roman)
         if question and len(user_messages) <= 5:
-            topic = topic_name(matched[0]["id"], lang, roman=roman)
-            prefix = t("prefix_symptom", lang, roman=roman, topic=topic) if len(user_messages) == 1 else t("prefix_see", lang, roman=roman)
-            return f"{prefix}{question}\n\n⚠️ {t('disclaimer', lang, roman=roman)}", lang, roman
+            base["next_question"] = question
+            base["topic"] = topic_name(matched[0]["id"], lang, roman=roman)
+            return base
 
-        return _build_guidance(matched, lang, roman=roman), lang, roman
+        base["guidance_ready"] = True
+        base["guidance_text"] = _build_guidance(matched, lang, roman=roman)
+        return base
+
+    def chat(self, messages: list[dict[str, str]]) -> tuple[str, Lang, bool]:
+        from composer import compose_reply
+
+        analysis = self.analyze(messages)
+        if not analysis:
+            return t("opening", "en"), "en", False
+        reply = compose_reply(analysis)
+        return reply, analysis.get("lang", "en"), analysis.get("roman", False)
 
     def summarize(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         lang = resolve_language(messages)
