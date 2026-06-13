@@ -27,6 +27,7 @@ router.get('/auth/profile', authenticate, auth.getProfile);
 
 // Doctors
 router.get('/doctors', doctors.getDoctors);
+router.get('/doctors/:doctorId/available-slots', appointments.getDoctorAvailableSlots);
 router.get('/doctors/:doctorId/reviews', reviews.getDoctorReviews);
 router.get('/doctors/:id', doctors.getDoctorById);
 

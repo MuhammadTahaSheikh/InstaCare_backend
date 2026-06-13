@@ -3,6 +3,33 @@ import {
   getReminderStatus,
   notifyAppointmentCancelled,
 } from '../services/appointmentNotificationService.js';
+import {
+  getAvailableSlots,
+  isSlotAvailable,
+  isValidSlotTime,
+  normalizeSlotTime,
+} from '../utils/appointmentSlots.js';
+
+export async function getDoctorAvailableSlots(req, res) {
+  try {
+    const { doctorId } = req.params;
+    const { date } = req.query;
+
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Valid date (YYYY-MM-DD) is required' });
+    }
+
+    const [doctor] = await pool.query('SELECT id FROM doctors WHERE id = ?', [doctorId]);
+    if (doctor.length === 0) {
+      return res.status(404).json({ error: 'Doctor not found' });
+    }
+
+    const result = await getAvailableSlots(pool, doctorId, date);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
 
 export async function createAppointment(req, res) {
   try {
@@ -12,10 +39,20 @@ export async function createAppointment(req, res) {
       return res.status(400).json({ error: 'Doctor, date, and time are required' });
     }
 
+    const slotTime = normalizeSlotTime(appointment_time);
+    if (!isValidSlotTime(slotTime)) {
+      return res.status(400).json({ error: 'Please select a valid appointment time slot' });
+    }
+
+    const available = await isSlotAvailable(pool, doctor_id, appointment_date, slotTime);
+    if (!available) {
+      return res.status(409).json({ error: 'This time slot is already booked. Please choose another.' });
+    }
+
     const [result] = await pool.query(
       `INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, type, notes)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [req.user.id, doctor_id, appointment_date, appointment_time, type, notes || null]
+      [req.user.id, doctor_id, appointment_date, `${slotTime}:00`, type, notes || null]
     );
 
     const [doctor] = await pool.query(
