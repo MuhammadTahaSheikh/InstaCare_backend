@@ -105,27 +105,22 @@ def _greeting(analysis: dict[str, Any]) -> str:
     lang = analysis["lang"]
 
     if roman:
-        if "salam" in msg or "assalam" in msg:
-            opener = _pick(
-                ["Walaikum assalam!", "Assalam o alaikum! Khair mubarak."],
-                msg,
-            )
-        elif any(w in msg for w in ("kase", "kaise", "kese", "kesa", "kaisa")):
+        if any(w in msg for w in ("kase", "kaise", "kese", "kesa", "kaisa", "salam", "assalam", "hello", "hi", "hey")):
             opener = _pick(
                 [
-                    "Alhamdulillah, main bilkul theek hoon!",
-                    "Shukriya poochhne ka — main khairyat se hoon!",
-                    "Ji, main theek hoon — aap ka khayal rakhnay ka shukriya!",
+                    "Hi! Main bilkul theek hoon.",
+                    "Hi! Shukriya poochhne ka — main khairyat se hoon.",
+                    "Hi! Main theek hoon — aap ka khayal rakhnay ka shukriya.",
                 ],
                 msg,
             )
         else:
-            opener = _pick(["Main theek hoon!", "Alhamdulillah, sab theek hai!"], msg)
+            opener = _pick(["Hi! Main theek hoon.", "Hi! Sab theek hai."], msg)
 
         body = _pick(
             [
-                f"{opener} Aap sunao, aap kaise hain?\n\nMain BestechCare ka AI Doctor hoon — agar bukhar, sar dard, khansi ya koi aur alamat ho to seedha bata dein.",
-                f"{opener} Aap kaise hain? Main yahan aap ki sehat mein madad ke liye hoon — jo bhi masla ho, araam se likh dein.",
+                f"{opener}\n\nMain BestechCare ka AI Doctor hoon — agar bukhar, sar dard, khansi ya koi aur alamat ho to seedha bata dein.",
+                f"{opener}\n\nMain yahan aap ki sehat mein madad ke liye hoon — jo bhi masla ho, araam se likh dein.",
             ],
             msg + "g",
         )
@@ -134,8 +129,8 @@ def _greeting(analysis: dict[str, Any]) -> str:
     else:
         body = _pick(
             [
-                "I'm doing well, thank you for asking! I'm your BestechCare AI Doctor assistant.\n\nWhat health concern or symptoms would you like to discuss today?",
-                "Hello! I'm here and ready to help. Tell me what's bothering you — headache, fever, stomach pain, or anything else.",
+                "Hi! I'm doing well, thank you for asking. I'm your BestechCare AI Doctor assistant.\n\nWhat health concern or symptoms would you like to discuss today?",
+                "Hi! I'm here and ready to help. Tell me what's bothering you — headache, fever, stomach pain, or anything else.",
             ],
             msg,
         )
@@ -194,7 +189,7 @@ def _thanks(analysis: dict[str, Any]) -> str:
 
 def _goodbye(analysis: dict[str, Any]) -> str:
     if analysis["roman"]:
-        return "Khuda hafiz! Jab bhi zaroorat ho wapas aayein — main yahan hoon.\n\n⚠️ " + _disclaimer(analysis)
+        return "Take care! Jab bhi zaroorat ho wapas aayein — main yahan hoon.\n\n⚠️ " + _disclaimer(analysis)
     return "Take care! Come back anytime you have health questions.\n\n⚠️ " + _disclaimer(analysis)
 
 

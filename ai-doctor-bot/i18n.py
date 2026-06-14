@@ -53,24 +53,24 @@ STRINGS: dict[str, dict] = {
     },
     "opening": {
         "en": (
-            "Hello! I'm your BestechCare AI Doctor assistant. I can help you understand your symptoms "
+            "Hi! I'm your BestechCare AI Doctor assistant. I can help you understand your symptoms "
             "and suggest next steps — but I am not a replacement for a licensed doctor.\n\n"
-            "Please describe your symptoms in any language (English, Urdu, Hindi) and I'll respond in the same language."
+            "Please describe your symptoms and I'll guide you professionally."
         ),
         "ur": (
-            "السلام علیکم! میں BestechCare کا AI Doctor ہوں۔ میں آپ کی علامات سمجھنے اور "
+            "Hi! میں BestechCare کا AI Doctor ہوں۔ میں آپ کی علامات سمجھنے اور "
             "اگلے قدم بتانے میں مدد کر سکتا ہوں — لیکن میں حقیقی ڈاکٹر کا متبادل نہیں ہوں۔\n\n"
-            "براہ کرم اپنی علامات بیان کریں۔ آپ جس زبان میں بات کریں گے، میں اسی میں جواب دوں گا۔"
+            "براہ کرم اپنی علامات بیان کریں۔"
         ),
         "hi": (
-            "नमस्ते! मैं BestechCare AI Doctor हूँ। मैं आपके लक्षण समझने में मदद कर सकता हूँ — "
+            "Hi! मैं BestechCare AI Doctor हूँ। मैं आपके लक्षण समझने में मदद कर सकता हूँ — "
             "लेकिन मैं वास्तविक डॉक्टर का विकल्प नहीं हूँ।\n\n"
-            "कृपया अपने लक्षण बताएं — जिस भाषा में बोलेंगे, उसी में जवाब दूँगा।"
+            "कृपया अपने लक्षण बताएं।"
         ),
         "ar": (
-            "مرحباً! أنا مساعد BestechCare AI Doctor. سأساعدك في فهم الأعراض "
+            "Hi! أنا مساعد BestechCare AI Doctor. سأساعدك في فهم الأعراض "
             "— لكنني لست بديلاً عن طبيب مرخص.\n\n"
-            "صف أعراضك بأي لغة وسأرد بنفس اللغة."
+            "صف أعراضك وسأرد بشكل مهني."
         ),
     },
     "lang_switched": {
@@ -125,19 +125,19 @@ STRINGS: dict[str, dict] = {
     },
     "greeting_reply": {
         "en": (
-            "Hello! I'm doing well, thank you for asking. I'm your BestechCare AI Doctor assistant.\n\n"
+            "Hi! I'm doing well, thank you for asking. I'm your BestechCare AI Doctor assistant.\n\n"
             "How can I help you today? Please describe any symptoms or health concern you're experiencing."
         ),
         "ur": (
-            "وعلیکم السلام! میں ٹھیک ہوں، پوچھنے کا شکریہ۔ میں BestechCare کا AI Doctor ہوں.\n\n"
+            "Hi! میں ٹھیک ہوں، پوچھنے کا شکریہ۔ میں BestechCare کا AI Doctor ہوں.\n\n"
             "آج آپ کو کیا علامات یا صحت کا مسئلہ ہے؟ براہ کرم تفصیل سے بتائیں."
         ),
         "hi": (
-            "नमस्ते! मैं ठीक हूँ, धन्यवाद। मैं BestechCare AI Doctor हूँ.\n\n"
+            "Hi! मैं ठीक हूँ, धन्यवाद। मैं BestechCare AI Doctor हूँ.\n\n"
             "आज आपको क्या लक्षण हैं? कृपया बताएं."
         ),
         "ar": (
-            "مرحباً! أنا بخير، شكراً. أنا مساعد BestechCare AI Doctor.\n\n"
+            "Hi! أنا بخير، شكراً. أنا مساعد BestechCare AI Doctor.\n\n"
             "ما الأعراض التي تعاني منها اليوم؟"
         ),
     },
@@ -219,9 +219,9 @@ STRINGS: dict[str, dict] = {
 ROMAN_STRINGS: dict[str, str] = {
     "disclaimer": "Hamesha doctor se mukammal checkup karwayen.",
     "opening": (
-        "Assalam o alaikum! Main BestechCare ka AI Doctor hoon. Main aap ki alamat samajhne aur "
+        "Hi! Main BestechCare ka AI Doctor hoon. Main aap ki alamat samajhne aur "
         "aglay qadam batane mein madad kar sakta hoon — lekin main haqiqi doctor ka badal nahin.\n\n"
-        "Apni alamat Roman Urdu ya English mein bata dein, main usi zaban mein jawab doonga."
+        "Apni alamat bata dein, main professional tareeqay se rehnumai karunga."
     ),
     "lang_switched": "Bilkul! Ab main Roman Urdu mein baat karunga. Apni alamat bata dein.",
     "emergency_header": "🚨 **FORI — abhi emergency medical madad hasil karein.**",
@@ -237,7 +237,7 @@ ROMAN_STRINGS: dict[str, str] = {
         "jaise bukhar, sar dard, khansi, ya pet dard."
     ),
     "greeting_reply": (
-        "Alhamdulillah, main theek hoon! Aap sunao, aap kaise hain?\n\n"
+        "Hi! Main theek hoon, shukriya poochhne ka.\n\n"
         "Main BestechCare ka AI Doctor hoon — agar koi alamat ya sehat ka masla ho "
         "(jaise bukhar, sar dard, khansi, pet dard) to bata dein, main madad karunga."
     ),
@@ -489,60 +489,60 @@ Gender = Literal["male", "female"]
 OPENING_BY_GENDER: dict[str, dict[Lang, str]] = {
     "male": {
         "en": (
-            "Hello! I'm your **BestechCare AI Doctor** (male assistant). I can help you understand your symptoms "
+            "Hi! I'm your **BestechCare AI Doctor** (male assistant). I can help you understand your symptoms "
             "and suggest next steps — but I am not a replacement for a licensed doctor.\n\n"
-            "Please describe your symptoms and I'll guide you in English."
+            "Please describe your symptoms and I'll guide you professionally."
         ),
         "ur": (
-            "السلام علیکم! میں BestechCare کا **AI Doctor (مرد)** ہوں۔ میں آپ کی علامات سمجھنے اور "
+            "Hi! میں BestechCare کا **AI Doctor (مرد)** ہوں۔ میں آپ کی علامات سمجھنے اور "
             "اگلے قدم بتانے میں مدد کر سکتا ہوں — لیکن میں حقیقی ڈاکٹر کا متبادل نہیں ہوں۔\n\n"
             "براہ کرم اپنی علامات بیان کریں۔"
         ),
         "hi": (
-            "नमस्ते! मैं BestechCare का **AI Doctor (पुरुष)** हूँ। मैं आपके लक्षण समझने में मदद कर सकता हूँ — "
+            "Hi! मैं BestechCare का **AI Doctor (पुरुष)** हूँ। मैं आपके लक्षण समझने में मदद कर सकता हूँ — "
             "लेकिन मैं वास्तविक डॉक्टर का विकल्प नहीं हूँ।\n\n"
             "कृपया अपने लक्षण बताएं।"
         ),
         "ar": (
-            "مرحباً! أنا **BestechCare AI Doctor (ذكر)**. سأساعدك في فهم الأعراض "
+            "Hi! أنا **BestechCare AI Doctor (ذكر)**. سأساعدك في فهم الأعراض "
             "— لكنني لست بديلاً عن طبيب مرخص.\n\n"
-            "صف أعراضك وسأرد بالعربية."
+            "صف أعراضك وسأرد بشكل مهني."
         ),
     },
     "female": {
         "en": (
-            "Hello! I'm your **BestechCare AI Doctor** (female assistant). I can help you understand your symptoms "
+            "Hi! I'm your **BestechCare AI Doctor** (female assistant). I can help you understand your symptoms "
             "and suggest next steps — but I am not a replacement for a licensed doctor.\n\n"
-            "Please describe your symptoms and I'll guide you in English."
+            "Please describe your symptoms and I'll guide you professionally."
         ),
         "ur": (
-            "السلام علیکم! میں BestechCare کی **AI Doctor (خاتون)** ہوں۔ میں آپ کی علامات سمجھنے اور "
+            "Hi! میں BestechCare کی **AI Doctor (خاتون)** ہوں۔ میں آپ کی علامات سمجھنے اور "
             "اگلے قدم بتانے میں مدد کر سکتی ہوں — لیکن میں حقیقی ڈاکٹر کا متبادل نہیں ہوں۔\n\n"
             "براہ کرم اپنی علامات بیان کریں۔"
         ),
         "hi": (
-            "नमस्ते! मैं BestechCare की **AI Doctor (महिला)** हूँ। मैं आपके लक्षण समझने में मदद कर सकती हूँ — "
+            "Hi! मैं BestechCare की **AI Doctor (महिला)** हूँ। मैं आपके लक्षण समझने में मदद कर सकती हूँ — "
             "लेकिन मैं वास्तविक डॉक्टर का विकल्प नहीं हूँ।\n\n"
             "कृपया अपने लक्षण बताएं।"
         ),
         "ar": (
-            "مرحباً! أنا **BestechCare AI Doctor (أنثى)**. سأساعدك في فهم الأعراض "
+            "Hi! أنا **BestechCare AI Doctor (أنثى)**. سأساعدك في فهم الأعراض "
             "— لكنني لست بديلاً عن طبيب مرخص.\n\n"
-            "صف أعراضك وسأرد بالعربية."
+            "صف أعراضك وسأرد بشكل مهني."
         ),
     },
 }
 
 OPENING_ROMAN_BY_GENDER: dict[str, str] = {
     "male": (
-        "Assalam o alaikum! Main BestechCare ka **AI Doctor (mard)** hoon. Main aap ki alamat samajhne aur "
+        "Hi! Main BestechCare ka **AI Doctor (mard)** hoon. Main aap ki alamat samajhne aur "
         "aglay qadam batane mein madad kar sakta hoon — lekin main haqiqi doctor ka badal nahin.\n\n"
-        "Apni alamat Roman Urdu ya English mein bata dein."
+        "Apni alamat bata dein, main professional tareeqay se rehnumai karunga."
     ),
     "female": (
-        "Assalam o alaikum! Main BestechCare ki **AI Doctor (khatoon)** hoon. Main aap ki alamat samajhne aur "
+        "Hi! Main BestechCare ki **AI Doctor (khatoon)** hoon. Main aap ki alamat samajhne aur "
         "aglay qadam batane mein madad kar sakti hoon — lekin main haqiqi doctor ka badal nahin.\n\n"
-        "Apni alamat Roman Urdu ya English mein bata dein."
+        "Apni alamat bata dein, main professional tareeqay se rehnumai karungi."
     ),
 }
 

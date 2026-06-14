@@ -240,7 +240,7 @@ SYMPTOM_RULES = [
 DISCLAIMER = "Always consult a qualified doctor for professional evaluation."
 
 OPENING_PROMPT = (
-    "Hello! I'm your BestechCare AI Doctor assistant. I can help you understand your symptoms "
+    "Hi! I'm your BestechCare AI Doctor assistant. I can help you understand your symptoms "
     "and suggest next steps — but I am **not** a replacement for a licensed doctor.\n\n"
     "Please describe your symptoms or health concern, and I'll ask a few follow-up questions."
 )

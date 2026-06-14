@@ -188,9 +188,9 @@ RESPONSES_ROMAN: dict[str, str] = {
     "unclear_nudge": (
         "Main sehat ke sawalat ke liye hoon. Misal: \"mujhe 2 din se bukhar hai\" ya \"sar mein dard hai\"."
     ),
-    "goodbye": "Khuda hafiz! Jab bhi sehat ka sawal ho wapas aayein.",
+    "goodbye": "Take care! Jab bhi sehat ka sawal ho wapas aayein.",
     "greeting_casual": (
-        "Alhamdulillah, main theek hoon! Aap sunao, aap kaise hain?\n\n"
+        "Hi! Main theek hoon, shukriya poochhne ka.\n\n"
         "Main BestechCare ka AI Doctor hoon — agar koi alamat ya sehat ka masla ho "
         "(jaise bukhar, sar dard, khansi, pet dard) to bata dein, main madad karunga."
     ),
@@ -253,9 +253,9 @@ def get_conversational_response(intent: Intent, lang: Lang, messages: list[dict]
             return RESPONSES_ROMAN["goodbye"]
         goodbye = {
             "en": "Take care! Feel free to come back anytime you have health questions. Goodbye!",
-            "ur": "خدا حافظ! جب بھی صحت کا سوال ہو واپس آئیں۔",
-            "hi": "अलविदा! स्वास्थ्य के सवालों के लिए वापस आएं।",
-            "ar": "مع السلامة! عد quando تحتاج مساعدة صحية.",
+            "ur": "Take care! جب بھی صحت کا سوال ہو واپس آئیں۔",
+            "hi": "Take care! स्वास्थ्य के सवालों के लिए वापस आएं।",
+            "ar": "Take care! عد في أي وقت تحتاج مساعدة صحية.",
         }
         return goodbye.get(lang) or goodbye["en"]
 
