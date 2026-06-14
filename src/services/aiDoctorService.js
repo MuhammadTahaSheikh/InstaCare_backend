@@ -110,25 +110,44 @@ const OPENAI_SUMMARY_PROMPT = `Produce a final consultation report as valid JSON
 summary, symptoms_discussed, possible_conditions, medicines, suggested_tests, precautions, self_care,
 urgent_care_required, urgent_care_reason, recommended_specialty_slug, disclaimer`;
 
-export async function getBotOpening() {
+function buildSessionPrefs(consultation) {
+  if (!consultation) return null;
+  return {
+    doctor_gender: consultation.doctor_gender || 'male',
+    preferred_language: consultation.preferred_language || 'en',
+    roman_urdu: Boolean(consultation.roman_urdu),
+  };
+}
+
+export async function getBotOpening({ doctorGender = 'male', preferredLanguage = 'en', romanUrdu = false } = {}) {
   const health = await checkBotHealth();
   if (!health.available) {
     throw new Error('AI Doctor bot is not running.');
   }
-  const data = await callPythonBot('/chat', { messages: [] });
+  const data = await callPythonBot('/chat', {
+    messages: [],
+    session_prefs: {
+      doctor_gender: doctorGender,
+      preferred_language: preferredLanguage,
+      roman_urdu: Boolean(romanUrdu),
+    },
+  });
   return {
     message: data.reply,
-    language: data.language || 'en',
+    language: data.language || preferredLanguage || 'en',
     voice_lang: data.voice_lang || 'en-US',
   };
 }
 
-export async function generateChatReply(conversationMessages, citySlug = 'lahore') {
+export async function generateChatReply(conversationMessages, citySlug = 'lahore', sessionPrefs = null) {
   const payload = conversationMessages.map((m) => ({ role: m.role, content: m.content }));
 
   const health = await checkBotHealth();
   if (health.available) {
-    const data = await callPythonBot('/chat', { messages: payload });
+    const data = await callPythonBot('/chat', {
+      messages: payload,
+      ...(sessionPrefs ? { session_prefs: sessionPrefs } : {}),
+    });
     let reply = sanitizeBotReply(data.reply);
     if (data.suggest_doctors) {
       reply = stripInventedDoctorNames(reply);
@@ -170,12 +189,15 @@ export async function generateChatReply(conversationMessages, citySlug = 'lahore
   );
 }
 
-export async function generateConsultationSummary(conversationMessages) {
+export async function generateConsultationSummary(conversationMessages, sessionPrefs = null) {
   const payload = conversationMessages.map((m) => ({ role: m.role, content: m.content }));
 
   const health = await checkBotHealth();
   if (health.available) {
-    const data = await callPythonBot('/summary', { messages: payload });
+    const data = await callPythonBot('/summary', {
+      messages: payload,
+      ...(sessionPrefs ? { session_prefs: sessionPrefs } : {}),
+    });
     const { engine, ...summary } = data;
     return summary;
   }
@@ -222,6 +244,8 @@ export async function isAiDoctorConfigured() {
   if (health.available) return true;
   return Boolean(getOpenAiConfig());
 }
+
+export { buildSessionPrefs };
 
 export async function getAiDoctorStatus() {
   const health = await checkBotHealth(true);

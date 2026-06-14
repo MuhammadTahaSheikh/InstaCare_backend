@@ -44,6 +44,20 @@ async function migrate() {
     console.log('Created ai_consultation_messages table');
   }
 
+  const [genderCol] = await pool.query(
+    `SELECT COUNT(*) AS count FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_consultations' AND COLUMN_NAME = 'doctor_gender'`
+  );
+  if (genderCol[0].count === 0) {
+    await pool.query(`
+      ALTER TABLE ai_consultations
+        ADD COLUMN doctor_gender ENUM('male', 'female') NOT NULL DEFAULT 'male' AFTER city_slug,
+        ADD COLUMN preferred_language VARCHAR(5) NOT NULL DEFAULT 'en' AFTER doctor_gender,
+        ADD COLUMN roman_urdu TINYINT(1) NOT NULL DEFAULT 0 AFTER preferred_language
+    `);
+    console.log('Added AI Doctor preference columns');
+  }
+
   await pool.end();
   console.log('Migration complete.');
 }

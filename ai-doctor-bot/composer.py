@@ -77,9 +77,12 @@ def _disclaimer(analysis: dict[str, Any]) -> str:
 
 
 def _opening(analysis: dict[str, Any]) -> str:
+    from i18n import opening_message
+
+    gender = analysis.get("doctor_gender", "male")
     if analysis.get("roman"):
-        return t("opening", "ur", roman=True)
-    return t("opening", analysis.get("lang", "en"))
+        return opening_message("ur", roman=True, gender=gender)
+    return opening_message(analysis.get("lang", "en"), gender=gender)
 
 
 def _emergency(analysis: dict[str, Any]) -> str:

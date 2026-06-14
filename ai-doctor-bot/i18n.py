@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Any, Literal
 
 Lang = Literal["en", "ur", "hi", "ar"]
 
@@ -482,3 +482,91 @@ def voice_lang_for(lang: Lang, *, roman: bool = False) -> str:
     if roman and lang == "ur":
         return "hi-IN"
     return VOICE_LANG_MAP.get(lang, "en-US")
+
+
+Gender = Literal["male", "female"]
+
+OPENING_BY_GENDER: dict[str, dict[Lang, str]] = {
+    "male": {
+        "en": (
+            "Hello! I'm your **BestechCare AI Doctor** (male assistant). I can help you understand your symptoms "
+            "and suggest next steps — but I am not a replacement for a licensed doctor.\n\n"
+            "Please describe your symptoms and I'll guide you in English."
+        ),
+        "ur": (
+            "السلام علیکم! میں BestechCare کا **AI Doctor (مرد)** ہوں۔ میں آپ کی علامات سمجھنے اور "
+            "اگلے قدم بتانے میں مدد کر سکتا ہوں — لیکن میں حقیقی ڈاکٹر کا متبادل نہیں ہوں۔\n\n"
+            "براہ کرم اپنی علامات بیان کریں۔"
+        ),
+        "hi": (
+            "नमस्ते! मैं BestechCare का **AI Doctor (पुरुष)** हूँ। मैं आपके लक्षण समझने में मदद कर सकता हूँ — "
+            "लेकिन मैं वास्तविक डॉक्टर का विकल्प नहीं हूँ।\n\n"
+            "कृपया अपने लक्षण बताएं।"
+        ),
+        "ar": (
+            "مرحباً! أنا **BestechCare AI Doctor (ذكر)**. سأساعدك في فهم الأعراض "
+            "— لكنني لست بديلاً عن طبيب مرخص.\n\n"
+            "صف أعراضك وسأرد بالعربية."
+        ),
+    },
+    "female": {
+        "en": (
+            "Hello! I'm your **BestechCare AI Doctor** (female assistant). I can help you understand your symptoms "
+            "and suggest next steps — but I am not a replacement for a licensed doctor.\n\n"
+            "Please describe your symptoms and I'll guide you in English."
+        ),
+        "ur": (
+            "السلام علیکم! میں BestechCare کی **AI Doctor (خاتون)** ہوں۔ میں آپ کی علامات سمجھنے اور "
+            "اگلے قدم بتانے میں مدد کر سکتی ہوں — لیکن میں حقیقی ڈاکٹر کا متبادل نہیں ہوں۔\n\n"
+            "براہ کرم اپنی علامات بیان کریں۔"
+        ),
+        "hi": (
+            "नमस्ते! मैं BestechCare की **AI Doctor (महिला)** हूँ। मैं आपके लक्षण समझने में मदद कर सकती हूँ — "
+            "लेकिन मैं वास्तविक डॉक्टर का विकल्प नहीं हूँ।\n\n"
+            "कृपया अपने लक्षण बताएं।"
+        ),
+        "ar": (
+            "مرحباً! أنا **BestechCare AI Doctor (أنثى)**. سأساعدك في فهم الأعراض "
+            "— لكنني لست بديلاً عن طبيب مرخص.\n\n"
+            "صف أعراضك وسأرد بالعربية."
+        ),
+    },
+}
+
+OPENING_ROMAN_BY_GENDER: dict[str, str] = {
+    "male": (
+        "Assalam o alaikum! Main BestechCare ka **AI Doctor (mard)** hoon. Main aap ki alamat samajhne aur "
+        "aglay qadam batane mein madad kar sakta hoon — lekin main haqiqi doctor ka badal nahin.\n\n"
+        "Apni alamat Roman Urdu ya English mein bata dein."
+    ),
+    "female": (
+        "Assalam o alaikum! Main BestechCare ki **AI Doctor (khatoon)** hoon. Main aap ki alamat samajhne aur "
+        "aglay qadam batane mein madad kar sakti hoon — lekin main haqiqi doctor ka badal nahin.\n\n"
+        "Apni alamat Roman Urdu ya English mein bata dein."
+    ),
+}
+
+
+def opening_message(
+    lang: Lang,
+    *,
+    roman: bool = False,
+    gender: Gender = "male",
+) -> str:
+    if roman and lang == "ur":
+        return OPENING_ROMAN_BY_GENDER.get(gender, OPENING_ROMAN_BY_GENDER["male"])
+    gender_bucket = OPENING_BY_GENDER.get(gender, OPENING_BY_GENDER["male"])
+    return gender_bucket.get(lang) or gender_bucket["en"]
+
+
+def session_style(
+    session_prefs: dict[str, Any] | None,
+) -> tuple[Lang, bool, Gender]:
+    if not session_prefs:
+        return "en", False, "male"
+    lang = session_prefs.get("preferred_language", "en")
+    roman = bool(session_prefs.get("roman_urdu")) and lang == "ur"
+    gender = session_prefs.get("doctor_gender", "male")
+    if gender not in ("male", "female"):
+        gender = "male"
+    return lang, roman, gender  # type: ignore[return-value]

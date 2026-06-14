@@ -16,6 +16,8 @@ from i18n import (
     detect_language_from_text,
     reply_in_roman_urdu,
     resolve_reply_style,
+    session_style,
+    opening_message,
 )
 from knowledge import EMERGENCY_KEYWORDS, SPECIALTY_SLUGS, SYMPTOM_RULES
 from text_utils import normalize_text
@@ -523,19 +525,42 @@ def _extract_symptoms(user_text: str, matched_rules: list[dict]) -> list[str]:
 
 
 class AiDoctorBot:
-    def analyze(self, messages: list[dict[str, str]]) -> dict[str, Any] | None:
+    def _resolve_lang(
+        self,
+        messages: list[dict[str, str]],
+        last_user: str,
+        session_prefs: dict[str, Any] | None,
+    ) -> tuple[Lang, bool, str]:
+        if session_prefs:
+            lang, roman, gender = session_style(session_prefs)
+            return lang, roman, gender
+
+        lang, roman = resolve_reply_style(last_user, messages) if last_user else ("en", False)
+        return lang, roman, "male"
+
+    def analyze(
+        self,
+        messages: list[dict[str, str]],
+        session_prefs: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """Build context for dynamic reply (composer or LLM)."""
-        lang = resolve_language(messages)
         user_messages = [m for m in messages if m.get("role") == "user"]
+        pref_lang, pref_roman, doctor_gender = session_style(session_prefs)
 
         if not user_messages:
-            return {"kind": "opening", "lang": lang, "roman": False, "messages": messages}
+            return {
+                "kind": "opening",
+                "lang": pref_lang,
+                "roman": pref_roman,
+                "doctor_gender": doctor_gender,
+                "messages": messages,
+            }
 
         last_user = user_messages[-1]["content"]
-        lang, roman = resolve_reply_style(last_user, messages)
+        lang, roman, doctor_gender = self._resolve_lang(messages, last_user, session_prefs)
 
         switch = is_language_switch_request(last_user)
-        if switch:
+        if switch and not session_prefs:
             lang = switch
             lang, roman = resolve_reply_style(last_user, messages)
             if switch == "ur" and reply_in_roman_urdu(last_user):
@@ -545,6 +570,7 @@ class AiDoctorBot:
                     "kind": "lang_switch",
                     "lang": lang,
                     "roman": roman,
+                    "doctor_gender": doctor_gender,
                     "last_user": last_user,
                     "messages": messages,
                 }
@@ -573,6 +599,7 @@ class AiDoctorBot:
             "kind": "chat",
             "lang": lang,
             "roman": roman,
+            "doctor_gender": doctor_gender,
             "intent": intent,
             "last_user": last_user,
             "user_message_count": len(user_messages),
@@ -618,20 +645,28 @@ class AiDoctorBot:
         base["guidance_text"] = _build_guidance(matched, lang, roman=roman)
         return base
 
-    def chat(self, messages: list[dict[str, str]]) -> tuple[str, Lang, bool]:
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        session_prefs: dict[str, Any] | None = None,
+    ) -> tuple[str, Lang, bool]:
         from composer import compose_reply
 
-        analysis = self.analyze(messages)
+        analysis = self.analyze(messages, session_prefs=session_prefs)
         if not analysis:
-            return t("opening", "en"), "en", False
+            pref_lang, pref_roman, doctor_gender = session_style(session_prefs)
+            return opening_message(pref_lang, roman=pref_roman, gender=doctor_gender), pref_lang, pref_roman
         reply = compose_reply(analysis)
         return reply, analysis.get("lang", "en"), analysis.get("roman", False)
 
-    def summarize(self, messages: list[dict[str, str]]) -> dict[str, Any]:
-        lang = resolve_language(messages)
+    def summarize(
+        self,
+        messages: list[dict[str, str]],
+        session_prefs: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         user_messages = [m for m in messages if m.get("role") == "user"]
         last_user = user_messages[-1]["content"] if user_messages else ""
-        lang, roman = resolve_reply_style(last_user, messages) if last_user else ("en", False)
+        lang, roman, _ = self._resolve_lang(messages, last_user, session_prefs)
         user_text = _all_user_text(messages)
         matched = _match_rules(user_text)
         data = _merge_rules(matched, lang, roman=roman)

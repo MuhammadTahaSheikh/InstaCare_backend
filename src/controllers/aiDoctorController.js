@@ -6,6 +6,7 @@ import {
   isAiDoctorConfigured,
   getAiDoctorStatus,
   getBotOpening,
+  buildSessionPrefs,
 } from '../services/aiDoctorService.js';
 import { buildConsultationPdf } from '../services/aiDoctorPdfService.js';
 import { notifyAiDoctorComplete } from '../services/n8nService.js';
@@ -56,20 +57,39 @@ export async function createSession(req, res) {
     const id = crypto.randomUUID();
     const userId = req.user?.id || null;
     const citySlug = req.body.city || 'lahore';
+    const doctorGender = req.body.doctor_gender === 'female' ? 'female' : 'male';
+    const preferredLanguage = ['en', 'ur', 'hi', 'ar'].includes(req.body.preferred_language)
+      ? req.body.preferred_language
+      : 'en';
+    const romanUrdu = Boolean(req.body.roman_urdu);
 
     await pool.query(
-      'INSERT INTO ai_consultations (id, user_id, city_slug) VALUES (?, ?, ?)',
-      [id, userId, citySlug]
+      `INSERT INTO ai_consultations
+       (id, user_id, city_slug, doctor_gender, preferred_language, roman_urdu)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, userId, citySlug, doctorGender, preferredLanguage, romanUrdu ? 1 : 0]
     );
 
-    const { message: welcome, language, voice_lang: voiceLang } = await getBotOpening();
+    const { message: welcome, language, voice_lang: voiceLang } = await getBotOpening({
+      doctorGender,
+      preferredLanguage,
+      romanUrdu,
+    });
 
     await pool.query(
       'INSERT INTO ai_consultation_messages (consultation_id, role, content) VALUES (?, ?, ?)',
       [id, 'assistant', welcome]
     );
 
-    res.status(201).json({ id, message: welcome, language, voice_lang: voiceLang });
+    res.status(201).json({
+      id,
+      message: welcome,
+      language,
+      voice_lang: voiceLang,
+      doctor_gender: doctorGender,
+      preferred_language: preferredLanguage,
+      roman_urdu: romanUrdu,
+    });
   } catch (err) {
     if (err.code === 'ER_NO_SUCH_TABLE') {
       return res.status(503).json({ error: 'AI Doctor database not set up. Run: npm run db:migrate:ai-doctor' });
@@ -118,8 +138,9 @@ export async function sendMessage(req, res) {
     );
 
     const history = await getMessages(consultation.id);
+    const sessionPrefs = buildSessionPrefs(consultation);
     const { reply, language, voice_lang: voiceLang, recommended_doctors: recommendedDoctors } =
-      await generateChatReply(history, consultation.city_slug || 'lahore');
+      await generateChatReply(history, consultation.city_slug || 'lahore', sessionPrefs);
 
     await pool.query(
       'INSERT INTO ai_consultation_messages (consultation_id, role, content) VALUES (?, ?, ?)',
@@ -155,7 +176,7 @@ export async function completeSession(req, res) {
       return res.status(400).json({ error: 'Please describe your symptoms before ending the consultation' });
     }
 
-    const summary = await generateConsultationSummary(messages);
+    const summary = await generateConsultationSummary(messages, buildSessionPrefs(consultation));
     const doctors = await fetchRecommendedDoctors(
       summary.recommended_specialty_slug,
       consultation.city_slug

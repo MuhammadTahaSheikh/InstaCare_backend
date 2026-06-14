@@ -23,6 +23,13 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(default_factory=list)
+    session_prefs: "SessionPrefs | None" = None
+
+
+class SessionPrefs(BaseModel):
+    doctor_gender: Literal["male", "female"] = "male"
+    preferred_language: Literal["en", "ur", "hi", "ar"] = "en"
+    roman_urdu: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -92,12 +99,13 @@ async def health():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     payload = [m.model_dump() for m in req.messages]
-    analysis = bot.analyze(payload)
+    prefs = req.session_prefs.model_dump() if req.session_prefs else None
+    analysis = bot.analyze(payload, session_prefs=prefs)
 
     if analysis and analysis.get("kind") == "emergency":
         return _make_chat_response(compose_reply(analysis), "dynamic-composer", analysis)
 
-    dynamic = await dynamic_chat(payload, analysis)
+    dynamic = await dynamic_chat(payload, analysis, session_prefs=prefs)
     if dynamic:
         reply, engine, lang, vlang = dynamic
         meta = _chat_meta(analysis)
@@ -123,7 +131,8 @@ async def chat(req: ChatRequest):
 @app.post("/summary", response_model=SummaryResponse)
 async def summary(req: ChatRequest):
     payload = [m.model_dump() for m in req.messages]
-    result = bot.summarize(payload)
+    prefs = req.session_prefs.model_dump() if req.session_prefs else None
+    result = bot.summarize(payload, session_prefs=prefs)
     result["engine"] = "smart-rules"
     return SummaryResponse(**result)
 

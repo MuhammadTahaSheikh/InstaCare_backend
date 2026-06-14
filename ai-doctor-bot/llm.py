@@ -173,6 +173,7 @@ async def _call_ollama(
 async def dynamic_chat(
     messages: list[dict],
     analysis: dict[str, Any] | None = None,
+    session_prefs: dict[str, Any] | None = None,
 ) -> tuple[str, str, Lang, str] | None:
     """Try Groq then Ollama. Returns (reply, engine, lang, voice_lang) or None."""
     user_messages = [m for m in messages if m.get("role") == "user"]
