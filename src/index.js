@@ -11,29 +11,13 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
-const allowedOrigins = [
-  'https://bestech-care.vercel.app',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-];
-
-function isAllowedOrigin(origin) {
-  // Native mobile apps often omit Origin or send the literal string "null"
-  if (!origin || origin === 'null') return true;
-  if (allowedOrigins.includes(origin)) return true;
-  // Expo / React Native dev servers (Expo Go, web, Metro)
-  if (/^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
-    return true;
-  }
-  return false;
-}
-
+// Public API: web app, Expo, and native mobile (Origin may be missing or "null")
 app.use(
   cors({
-    origin(origin, callback) {
-      callback(null, isAllowedOrigin(origin));
-    },
+    origin: true,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-webhook-secret'],
   })
 );
 app.use(express.json());
