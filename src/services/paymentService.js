@@ -3,20 +3,24 @@ import pool from '../config/db.js';
 import * as jazzcash from './jazzcashService.js';
 import { notifyAppointmentConfirmed } from './appointmentNotificationService.js';
 import { sendPaymentOtpEmail } from './emailService.js';
+import { sendPaymentOtpSms, isSmsConfigured } from './smsService.js';
+import { maskPhone, isValidPakistaniMobile } from '../utils/phone.js';
 import { generateOtp, hashOtp, verifyOtp, getOtpExpiry, isOtpExpired } from '../utils/otp.js';
 
-const MOCK_OTP = '123456';
-
-export function generateTransactionId(method) {
-  const prefix = method === 'jazzcash' ? 'JC' : 'EP';
-  return `${prefix}${Date.now()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+export function isPaymentLive() {
+  const mode = (process.env.PAYMENT_MODE || '').toLowerCase().trim();
+  if (mode === 'test') return false;
+  if (mode === 'live') return jazzcash.isJazzCashConfigured();
+  return jazzcash.isProduction() && jazzcash.isJazzCashConfigured();
 }
 
 export function isJazzCashLive() {
-  return jazzcash.isJazzCashConfigured();
+  return isPaymentLive();
 }
 
 export async function getPaymentPreview(type, referenceId, userId) {
+  const live = isPaymentLive();
+
   if (type === 'appointment') {
     const [rows] = await pool.query(
       `SELECT a.*, d.consultation_fee AS amount, u.name AS doctor_name
@@ -35,7 +39,8 @@ export async function getPaymentPreview(type, referenceId, userId) {
       title: `Consultation with ${row.doctor_name}`,
       payment_status: row.payment_status,
       status: row.status,
-      jazzcash_live: jazzcash.isJazzCashConfigured(),
+      payment_live: live,
+      jazzcash_live: live,
     };
   }
 
@@ -53,7 +58,8 @@ export async function getPaymentPreview(type, referenceId, userId) {
       title: `Medicine Order #${row.id}`,
       payment_status: row.payment_status,
       status: row.status,
-      jazzcash_live: jazzcash.isJazzCashConfigured(),
+      payment_live: live,
+      jazzcash_live: live,
     };
   }
 
@@ -100,15 +106,20 @@ async function completePayment(payment) {
   };
 }
 
+export function generateTransactionId(method) {
+  const prefix = method === 'jazzcash' ? 'JC' : 'EP';
+  return `${prefix}${Date.now()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+}
+
 async function getUserContact(userId) {
   const [rows] = await pool.query('SELECT email, name FROM users WHERE id = ?', [userId]);
   return rows[0] || null;
 }
 
-async function startEmailOtpPayment({ paymentId, userId, preview, phone }) {
-  const user = await getUserContact(userId);
-  if (!user?.email) {
-    throw new Error('No email on file for OTP delivery');
+/** Test mode: OTP to phone via SMS (or email fallback). No wallet deduction. */
+async function startTestOtpPayment({ paymentId, userId, preview, phone, method }) {
+  if (!isValidPakistaniMobile(phone)) {
+    throw new Error('Enter a valid Pakistani mobile number (03XX-XXXXXXX)');
   }
 
   const otp = generateOtp();
@@ -117,23 +128,77 @@ async function startEmailOtpPayment({ paymentId, userId, preview, phone }) {
     [hashOtp(otp), getOtpExpiry(), paymentId]
   );
 
-  await sendPaymentOtpEmail({
-    to: user.email,
-    name: user.name,
-    otp,
-    amount: preview.amount,
-    title: preview.title,
-    phone,
-  });
+  let smsSent = false;
+  if (isSmsConfigured()) {
+    try {
+      const smsResult = await sendPaymentOtpSms({
+        to: phone,
+        otp,
+        amount: preview.amount,
+        title: preview.title,
+      });
+      if (smsResult.sent) {
+        smsSent = true;
+        return {
+          payment_id: paymentId,
+          amount: preview.amount,
+          method,
+          mode: 'sms',
+          payment_mode: 'test',
+          otp_required: true,
+          message: `OTP sent to ${smsResult.to}. Check your SMS (valid 5 minutes). No money will be deducted in test mode.`,
+        };
+      }
+    } catch (err) {
+      console.warn('[payment] SMS OTP failed, trying email fallback:', err.message);
+    }
+  }
 
-  return {
-    payment_id: paymentId,
-    amount: preview.amount,
-    method: 'jazzcash',
-    mode: 'email',
-    otp_required: true,
-    message: `OTP sent to ${user.email}. Check your inbox (and spam).`,
-  };
+  const user = await getUserContact(userId);
+  if (user?.email) {
+    await sendPaymentOtpEmail({
+      to: user.email,
+      name: user.name,
+      otp,
+      amount: preview.amount,
+      title: preview.title,
+      phone,
+    });
+
+    const response = {
+      payment_id: paymentId,
+      amount: preview.amount,
+      method,
+      mode: smsSent ? 'sms' : 'email',
+      payment_mode: 'test',
+      otp_required: true,
+      message: smsSent
+        ? `OTP sent to ${maskPhone(phone)}. Check your SMS.`
+        : `SMS unavailable — OTP sent to ${user.email}. No money will be deducted in test mode.`,
+    };
+
+    if (!smsSent && process.env.NODE_ENV !== 'production') {
+      response.demo_otp = otp;
+    }
+    return response;
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return {
+      payment_id: paymentId,
+      amount: preview.amount,
+      method,
+      mode: 'test',
+      payment_mode: 'test',
+      otp_required: true,
+      message: `Test mode — configure Twilio for SMS OTP to ${maskPhone(phone)}. No money deducted.`,
+      demo_otp: otp,
+    };
+  }
+
+  throw new Error(
+    'SMS OTP is not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER to backend/.env'
+  );
 }
 
 export async function initiatePayment({ userId, type, referenceId, method, phone, cnic }) {
@@ -158,8 +223,10 @@ export async function initiatePayment({ userId, type, referenceId, method, phone
   );
 
   const paymentId = result.insertId;
+  const live = isPaymentLive();
 
-  if (method === 'jazzcash' && jazzcash.isJazzCashConfigured()) {
+  // Live mode: JazzCash deducts real money from the wallet after OTP verification.
+  if (method === 'jazzcash' && live) {
     if (!cnicLast6 || cnicLast6.length !== 6) {
       await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
       throw new Error('Last 6 digits of CNIC are required for JazzCash payments');
@@ -191,6 +258,7 @@ export async function initiatePayment({ userId, type, referenceId, method, phone
           amount: preview.amount,
           method,
           mode: 'jazzcash',
+          payment_mode: 'live',
           completed: true,
           message: jc.message,
           ...completed,
@@ -203,55 +271,27 @@ export async function initiatePayment({ userId, type, referenceId, method, phone
           amount: preview.amount,
           method,
           mode: 'jazzcash',
+          payment_mode: 'live',
           otp_required: true,
-          message: `OTP sent to ${jazzcash.normalizePhone(phone)}. Check your JazzCash SMS.`,
+          message: `OTP sent to ${jazzcash.normalizePhone(phone)} via JazzCash. Amount will be deducted from your wallet after verification.`,
         };
       }
 
-      console.warn('[payment] JazzCash failed, falling back to email OTP:', jc.message);
-      return startEmailOtpPayment({ paymentId, userId, preview, phone });
+      await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
+      throw new Error(jc.message || 'JazzCash payment initiation failed');
     } catch (err) {
-      console.warn('[payment] JazzCash error, falling back to email OTP:', err.message);
-      try {
-        return await startEmailOtpPayment({ paymentId, userId, preview, phone });
-      } catch (fallbackErr) {
-        await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
-        throw new Error(fallbackErr.message || err.message || 'JazzCash payment initiation failed');
-      }
+      await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
+      throw new Error(err.message || 'JazzCash payment initiation failed');
     }
   }
 
-  const user = await getUserContact(userId);
-  if (!user?.email) {
+  // Test mode (sandbox) or EasyPaisa: SMS OTP, no wallet deduction.
+  try {
+    return await startTestOtpPayment({ paymentId, userId, preview, phone, method });
+  } catch (err) {
     await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
-    throw new Error('No email on file for OTP delivery');
+    throw err;
   }
-
-  const otp = generateOtp();
-  await pool.query('UPDATE payments SET otp_hash = ?, otp_expires_at = ? WHERE id = ?', [
-    hashOtp(otp),
-    getOtpExpiry(),
-    paymentId,
-  ]);
-
-  await sendPaymentOtpEmail({
-    to: user.email,
-    name: user.name,
-    otp,
-    amount: preview.amount,
-    title: preview.title,
-    phone,
-  });
-
-  return {
-    payment_id: paymentId,
-    amount: preview.amount,
-    method,
-    mode: 'email',
-    otp_required: true,
-    message: `OTP sent to ${user.email}. Check your inbox (and spam).`,
-    demo_otp: process.env.NODE_ENV !== 'production' ? otp : undefined,
-  };
 }
 
 export async function verifyPayment({ paymentId, userId, otp }) {
@@ -264,6 +304,7 @@ export async function verifyPayment({ paymentId, userId, otp }) {
   const payment = payments[0];
   if (payment.status === 'completed') throw new Error('Payment already completed');
 
+  // Test mode: verify locally stored OTP — no money deducted.
   if (payment.otp_hash) {
     if (isOtpExpired(payment.otp_expires_at)) {
       await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
@@ -280,7 +321,12 @@ export async function verifyPayment({ paymentId, userId, otp }) {
     return completePayment(payment);
   }
 
-  if (payment.method === 'jazzcash' && payment.gateway_txn_ref && jazzcash.isJazzCashConfigured()) {
+  // Live mode: JazzCash verifies OTP and deducts from wallet.
+  if (
+    payment.method === 'jazzcash' &&
+    payment.gateway_txn_ref &&
+    isPaymentLive()
+  ) {
     const preview = await getPaymentPreview(
       payment.reference_type,
       payment.reference_id,
@@ -316,17 +362,13 @@ export async function verifyPayment({ paymentId, userId, otp }) {
     }
   }
 
-  if (otp !== MOCK_OTP) {
-    await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
-    throw new Error('Invalid OTP. Please try again.');
-  }
-
-  return completePayment(payment);
+  await pool.query('UPDATE payments SET status = ? WHERE id = ?', ['failed', paymentId]);
+  throw new Error('Invalid OTP. Please try again.');
 }
 
 export async function handleJazzCashCallback(responseData) {
-  if (!jazzcash.isJazzCashConfigured()) {
-    throw new Error('JazzCash is not configured');
+  if (!isPaymentLive()) {
+    throw new Error('JazzCash callbacks are only handled in live mode');
   }
 
   if (!jazzcash.verifyCallbackHash(responseData)) {

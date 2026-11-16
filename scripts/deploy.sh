@@ -27,6 +27,9 @@ npm run db:migrate:email
 npm run db:migrate:payments
 npm run db:migrate:payment-otp
 npm run db:migrate:ai-doctor
+npm run db:migrate:doctor-online
+npm run db:migrate:google-auth
+npm run db:migrate:doctor-fees-100usd
 
 echo "==> Setting up AI Doctor Python bot..."
 chmod +x ai-doctor-bot/start.sh

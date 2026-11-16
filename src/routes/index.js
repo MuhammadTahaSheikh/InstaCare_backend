@@ -12,6 +12,7 @@ import * as admin from '../controllers/adminController.js';
 import * as payments from '../controllers/paymentController.js';
 import * as consultation from '../controllers/consultationController.js';
 import * as aiDoctor from '../controllers/aiDoctorController.js';
+import * as summary from '../controllers/summaryController.js';
 import { requireWebhookSecret } from '../middleware/webhookAuth.js';
 import { optionalAuthenticate } from '../middleware/optionalAuth.js';
 
@@ -22,6 +23,7 @@ const router = Router();
 // Auth
 router.post('/auth/register', auth.register);
 router.post('/auth/login', auth.login);
+router.post('/auth/google', auth.googleLogin);
 router.get('/auth/verify-email', auth.verifyEmail);
 router.post('/auth/verify-email', auth.verifyEmail);
 router.post('/auth/resend-verification', auth.resendVerification);
@@ -32,6 +34,8 @@ router.get('/doctors', doctors.getDoctors);
 router.get('/doctors/:doctorId/available-slots', appointments.getDoctorAvailableSlots);
 router.get('/doctors/:doctorId/reviews', reviews.getDoctorReviews);
 router.get('/doctors/:id', doctors.getDoctorById);
+router.get('/doctor/availability', authenticate, requireRole('doctor'), doctors.getMyAvailability);
+router.patch('/doctor/availability', authenticate, requireRole('doctor'), doctors.setMyAvailability);
 
 // Hospitals
 router.get('/hospitals', hospitals.getHospitals);
@@ -61,6 +65,10 @@ router.post('/payments/jazzcash/callback', payments.jazzcashCallback);
 // Video Consultation
 router.get('/consultation/doctor/my', authenticate, consultation.getDoctorConsultations);
 router.get('/consultation/:id', authenticate, consultation.getConsultationRoom);
+
+// User summaries
+router.get('/summary/my', authenticate, summary.getMySummary);
+router.get('/admin/summaries', ...adminOnly, summary.getAllSummaries);
 
 // Reviews
 router.post('/reviews', authenticate, reviews.createReview);
@@ -92,13 +100,13 @@ router.post('/admin/medicines', ...adminOnly, admin.createMedicine);
 router.patch('/admin/medicines/:id', ...adminOnly, admin.updateMedicine);
 router.delete('/admin/medicines/:id', ...adminOnly, admin.deleteMedicine);
 
-// AI Doctor (isolated feature — optional auth for guests + logged-in users)
+// AI Doctor (guests: 3 messages, then login required)
 router.get('/ai-doctor/status', aiDoctor.getStatus);
 router.post('/ai-doctor/sessions', optionalAuthenticate, aiDoctor.createSession);
 router.get('/ai-doctor/sessions/:id', optionalAuthenticate, aiDoctor.getSession);
 router.post('/ai-doctor/sessions/:id/messages', optionalAuthenticate, aiDoctor.sendMessage);
-router.post('/ai-doctor/sessions/:id/complete', optionalAuthenticate, aiDoctor.completeSession);
-router.get('/ai-doctor/sessions/:id/pdf', optionalAuthenticate, aiDoctor.downloadPdf);
+router.post('/ai-doctor/sessions/:id/complete', authenticate, aiDoctor.completeSession);
+router.get('/ai-doctor/sessions/:id/pdf', authenticate, aiDoctor.downloadPdf);
 
 // Misc
 router.get('/specialties', misc.getSpecialties);

@@ -12,6 +12,9 @@
     "db:migrate:payments": "node database/migrate-payments-jazzcash.js",
     "db:migrate:payment-otp": "node database/migrate-payment-otp.js",
     "db:migrate:ai-doctor": "node database/migrate-ai-doctor.js",
+    "db:migrate:doctor-online": "node database/migrate-doctor-online.js",
+    "db:migrate:google-auth": "node database/migrate-google-auth.js",
+    "db:migrate:doctor-fees-100usd": "node database/migrate-doctor-fees-100usd.js",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
@@ -19,6 +22,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
+    "google-auth-library": "^10.7.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.11.0",
     "nodemailer": "^8.0.11",

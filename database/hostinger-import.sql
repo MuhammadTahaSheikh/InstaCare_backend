@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS doctors (
   consultation_fee DECIMAL(10,2) DEFAULT 0,
   online_consultation BOOLEAN DEFAULT TRUE,
   in_clinic BOOLEAN DEFAULT TRUE,
+  is_online BOOLEAN DEFAULT FALSE,
   bio TEXT,
   image_url VARCHAR(500),
   rating DECIMAL(2,1) DEFAULT 0,

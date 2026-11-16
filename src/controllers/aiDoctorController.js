@@ -12,6 +12,8 @@ import { buildConsultationPdf } from '../services/aiDoctorPdfService.js';
 import { notifyAiDoctorComplete } from '../services/n8nService.js';
 import { fetchRecommendedDoctors } from '../services/aiDoctorDoctors.js';
 
+export const GUEST_MESSAGE_LIMIT = 3;
+
 function parseJsonField(value, fallback) {
   if (value == null) return fallback;
   if (typeof value === 'object') return value;
@@ -37,13 +39,40 @@ async function getMessages(consultationId) {
 
 function canAccessConsultation(consultation, req) {
   if (!consultation) return false;
-  if (consultation.user_id && req.user?.id !== consultation.user_id) return false;
+  if (consultation.user_id) {
+    return req.user?.id === consultation.user_id;
+  }
   return true;
+}
+
+function countUserMessages(messages) {
+  return messages.filter((m) => m.role === 'user').length;
+}
+
+function guestSessionMeta(consultation, req, messages) {
+  const isGuest = !consultation.user_id && !req.user?.id;
+  const used = countUserMessages(messages);
+  return {
+    guest_message_limit: GUEST_MESSAGE_LIMIT,
+    guest_messages_used: isGuest ? used : null,
+    guest_messages_remaining: isGuest ? Math.max(0, GUEST_MESSAGE_LIMIT - used) : null,
+    login_required: isGuest && used >= GUEST_MESSAGE_LIMIT,
+  };
+}
+
+async function attachUserToGuestSession(consultation, userId) {
+  if (consultation.user_id || !userId) return consultation;
+  await pool.query(
+    'UPDATE ai_consultations SET user_id = ? WHERE id = ? AND user_id IS NULL',
+    [userId, consultation.id]
+  );
+  consultation.user_id = userId;
+  return consultation;
 }
 
 export async function getStatus(req, res) {
   const status = await getAiDoctorStatus();
-  res.json(status);
+  res.json({ ...status, guest_message_limit: GUEST_MESSAGE_LIMIT });
 }
 
 export async function createSession(req, res) {
@@ -89,6 +118,8 @@ export async function createSession(req, res) {
       doctor_gender: doctorGender,
       preferred_language: preferredLanguage,
       roman_urdu: romanUrdu,
+      guest_message_limit: userId ? null : GUEST_MESSAGE_LIMIT,
+      guest_messages_remaining: userId ? null : GUEST_MESSAGE_LIMIT,
     });
   } catch (err) {
     if (err.code === 'ER_NO_SUCH_TABLE') {
@@ -111,6 +142,7 @@ export async function getSession(req, res) {
       summary: parseJsonField(consultation.summary, null),
       recommended_doctors: parseJsonField(consultation.recommended_doctors, null),
       messages,
+      ...guestSessionMeta(consultation, req, messages),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -130,6 +162,21 @@ export async function sendMessage(req, res) {
     }
     if (consultation.status !== 'active') {
       return res.status(400).json({ error: 'This consultation has ended' });
+    }
+
+    await attachUserToGuestSession(consultation, req.user?.id);
+
+    const existingMessages = await getMessages(consultation.id);
+    const isGuest = !consultation.user_id;
+    const userMessageCount = countUserMessages(existingMessages);
+
+    if (isGuest && userMessageCount >= GUEST_MESSAGE_LIMIT) {
+      return res.status(403).json({
+        error: 'You have used your 3 free messages. Please log in to continue your consultation.',
+        code: 'LOGIN_REQUIRED',
+        guest_message_limit: GUEST_MESSAGE_LIMIT,
+        guest_messages_used: userMessageCount,
+      });
     }
 
     await pool.query(
@@ -152,6 +199,7 @@ export async function sendMessage(req, res) {
       language,
       voice_lang: voiceLang,
       recommended_doctors: recommendedDoctors || [],
+      ...guestSessionMeta(consultation, req, history),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -161,8 +209,14 @@ export async function sendMessage(req, res) {
 export async function completeSession(req, res) {
   try {
     const consultation = await getConsultation(req.params.id);
-    if (!canAccessConsultation(consultation, req)) {
+    if (!consultation) {
       return res.status(404).json({ error: 'Consultation not found' });
+    }
+    if (!consultation.user_id || consultation.user_id !== req.user.id) {
+      return res.status(403).json({
+        error: 'Please log in to complete your consultation and view the summary.',
+        code: 'LOGIN_REQUIRED',
+      });
     }
     if (consultation.status === 'completed') {
       const summary = parseJsonField(consultation.summary, {});

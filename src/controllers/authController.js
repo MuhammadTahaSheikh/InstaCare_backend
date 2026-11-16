@@ -1,8 +1,13 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import pool from '../config/db.js';
 import { sendVerificationEmail } from '../services/emailService.js';
+
+const googleClient = process.env.GOOGLE_CLIENT_ID
+  ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+  : null;
 
 const VERIFICATION_EXPIRY_HOURS = 24;
 
@@ -152,6 +157,13 @@ export async function login(req, res) {
     }
 
     const user = users[0];
+    if (!user.password) {
+      return res.status(401).json({
+        error: 'This account uses Google sign-in. Please continue with Google.',
+        code: 'GOOGLE_ACCOUNT',
+      });
+    }
+
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -165,18 +177,79 @@ export async function login(req, res) {
       });
     }
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.json({
-      token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, city_id: user.city_id },
-    });
+    issueAuthResponse(user, res);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+}
+
+function issueAuthResponse(user, res) {
+  const token = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  res.json({
+    token,
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, city_id: user.city_id },
+  });
+}
+
+export async function googleLogin(req, res) {
+  try {
+    if (!googleClient) {
+      return res.status(503).json({ error: 'Google sign-in is not configured' });
+    }
+
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ error: 'Google credential is required' });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const googleId = payload.sub;
+    const email = payload.email;
+    const name = payload.name;
+    const emailVerified = payload.email_verified;
+
+    if (!email || !emailVerified) {
+      return res.status(401).json({ error: 'Google account email is not verified' });
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+
+    let [users] = await pool.query('SELECT * FROM users WHERE google_id = ?', [googleId]);
+
+    if (users.length === 0) {
+      [users] = await pool.query('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
+
+      if (users.length > 0) {
+        const existing = users[0];
+        await pool.query(
+          'UPDATE users SET google_id = ?, email_verified = TRUE WHERE id = ?',
+          [googleId, existing.id]
+        );
+        users[0] = { ...existing, google_id: googleId, email_verified: true };
+      } else {
+        const displayName = name?.trim() || normalizedEmail.split('@')[0];
+        const [result] = await pool.query(
+          `INSERT INTO users (name, email, password, role, google_id, email_verified)
+           VALUES (?, ?, NULL, 'patient', ?, TRUE)`,
+          [displayName, normalizedEmail, googleId]
+        );
+        [users] = await pool.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+      }
+    }
+
+    issueAuthResponse(users[0], res);
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid Google sign-in. Please try again.' });
   }
 }
 

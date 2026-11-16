@@ -49,22 +49,35 @@ export async function createAppointment(req, res) {
       return res.status(409).json({ error: 'This time slot is already booked. Please choose another.' });
     }
 
+    const [doctorRows] = await pool.query(
+      'SELECT consultation_fee, online_consultation, is_online FROM doctors WHERE id = ?',
+      [doctor_id]
+    );
+    if (doctorRows.length === 0) {
+      return res.status(404).json({ error: 'Doctor not found' });
+    }
+    const doctor = doctorRows[0];
+
+    if (type === 'online') {
+      if (!doctor.online_consultation) {
+        return res.status(400).json({ error: 'This doctor does not offer online consultations.' });
+      }
+      if (!doctor.is_online) {
+        return res.status(409).json({ error: 'This doctor is currently offline. Please try again later or book in-clinic.' });
+      }
+    }
+
     const [result] = await pool.query(
       `INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, type, notes)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [req.user.id, doctor_id, appointment_date, `${slotTime}:00`, type, notes || null]
     );
 
-    const [doctor] = await pool.query(
-      'SELECT consultation_fee FROM doctors WHERE id = ?',
-      [doctor_id]
-    );
-
     res.status(201).json({
       message: 'Appointment booked. Please complete payment.',
       id: result.insertId,
       payment_required: true,
-      amount: doctor[0]?.consultation_fee || 0,
+      amount: doctor.consultation_fee || 0,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

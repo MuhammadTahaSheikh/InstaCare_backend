@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Setup\n1. Activate this workflow\n2. Backend `.env`: `N8N_APPOINTMENT_WEBHOOK_URL` + `N8N_WEBHOOK_SECRET`\n3. Connect **both email nodes** to your Hostinger SMTP credential\n4. **Check appointment status** header: `X-Webhook-Secret`\n\n**Flow**\n- `appointment.confirmed` → calculate wait → confirmation email → wait → reminder email\n- `appointment.cancelled` → stop",
+        "content": "## Setup\n1. Activate this workflow\n2. Backend `.env`: `N8N_APPOINTMENT_WEBHOOK_URL` + `N8N_WEBHOOK_SECRET`\n3. Connect **all email nodes** to your Hostinger SMTP credential\n4. **Check appointment status** header: `X-Webhook-Secret`\n\n**Flow**\n- `appointment.confirmed` → calculate wait → confirmation emails (patient + doctor) → wait → reminder email\n- `appointment.cancelled` → stop",
         "height": 340,
         "width": 520
       },
@@ -79,7 +79,22 @@
       "name": "Send confirmation email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [720, 220]
+      "position": [720, 140]
+    },
+    {
+      "parameters": {
+        "fromEmail": "BestechCare <info@bestechvision.com>",
+        "toEmail": "={{ $('Calculate wait time').item.json.doctor_email }}",
+        "subject": "=New appointment booked — {{ $('Calculate wait time').item.json.patient_name }}",
+        "emailFormat": "html",
+        "html": "=<p>Hi Dr. {{ $('Calculate wait time').item.json.doctor_name }},</p>\n<p>A new appointment has been <strong>booked</strong> with you.</p>\n<table cellpadding=\"6\" style=\"border-collapse:collapse;\">\n  <tr><td><strong>Patient</strong></td><td>{{ $('Calculate wait time').item.json.patient_name }}</td></tr>\n  <tr><td><strong>Specialty</strong></td><td>{{ $('Calculate wait time').item.json.specialty_name }}</td></tr>\n  <tr><td><strong>When</strong></td><td>{{ $('Calculate wait time').item.json.appointment_display }}</td></tr>\n  <tr><td><strong>Type</strong></td><td>{{ $('Calculate wait time').item.json.type_label }}</td></tr>\n</table>\n<p>BestechCare</p>",
+        "options": {}
+      },
+      "id": "f2a3b4c5-d6e7-8901-bcde-f12345678901",
+      "name": "Send doctor confirmation email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 320]
     },
     {
       "parameters": {
@@ -231,6 +246,11 @@
         [
           {
             "node": "Send confirmation email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send doctor confirmation email",
             "type": "main",
             "index": 0
           }

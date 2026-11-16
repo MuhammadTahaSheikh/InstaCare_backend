@@ -41,10 +41,10 @@ INSERT INTO users (name, email, password, phone, role, city_id, email_verified) 
 
 -- Sample doctors
 INSERT INTO doctors (user_id, specialty_id, hospital_id, qualification, experience_years, consultation_fee, online_consultation, in_clinic, bio, rating, is_verified) VALUES
-(1, 1, 1, 'MBBS, FCPS (Gynecology)', 12, 2500.00, TRUE, TRUE, 'Experienced gynecologist specializing in women health.', 4.8, TRUE),
-(2, 2, 2, 'BDS, MDS (Oral Surgery)', 8, 2000.00, TRUE, TRUE, 'Expert dentist with focus on cosmetic dentistry.', 4.6, TRUE),
-(3, 4, 3, 'MBBS, FCPS (Cardiology)', 15, 3500.00, TRUE, TRUE, 'Senior cardiologist with extensive experience.', 4.9, TRUE),
-(6, 9, 5, 'MBBS, FCPS (Medicine)', 10, 2000.00, TRUE, TRUE, 'General physician at MIH with expertise in primary care and preventive medicine.', 4.8, TRUE);
+(1, 1, 1, 'MBBS, FCPS (Gynecology)', 12, 28000.00, TRUE, TRUE, 'Experienced gynecologist specializing in women health.', 4.8, TRUE),
+(2, 2, 2, 'BDS, MDS (Oral Surgery)', 8, 28000.00, TRUE, TRUE, 'Expert dentist with focus on cosmetic dentistry.', 4.6, TRUE),
+(3, 4, 3, 'MBBS, FCPS (Cardiology)', 15, 28000.00, TRUE, TRUE, 'Senior cardiologist with extensive experience.', 4.9, TRUE),
+(6, 9, 5, 'MBBS, FCPS (Medicine)', 10, 28000.00, TRUE, TRUE, 'General physician at MIH with expertise in primary care and preventive medicine.', 4.8, TRUE);
 
 -- Sample labs
 INSERT INTO labs (name, slug, description, city_id, phone, discount_percent, rating) VALUES

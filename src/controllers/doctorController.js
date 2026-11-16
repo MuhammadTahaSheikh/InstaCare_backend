@@ -25,7 +25,7 @@ export async function getDoctors(req, res) {
       params.push(city);
     }
     if (online === 'true') {
-      query += ' AND d.online_consultation = TRUE';
+      query += ' AND d.online_consultation = TRUE AND d.is_online = TRUE';
     }
     if (search) {
       query += ' AND (u.name LIKE ? OR s.name LIKE ?)';
@@ -60,6 +60,48 @@ export async function getDoctorById(req, res) {
       return res.status(404).json({ error: 'Doctor not found' });
     }
     res.json(doctors[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getMyAvailability(req, res) {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, online_consultation, is_online FROM doctors WHERE user_id = ?',
+      [req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Doctor profile not found' });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function setMyAvailability(req, res) {
+  try {
+    const { is_online } = req.body;
+    if (typeof is_online !== 'boolean') {
+      return res.status(400).json({ error: 'is_online must be true or false' });
+    }
+
+    const [rows] = await pool.query(
+      'SELECT id, online_consultation FROM doctors WHERE user_id = ?',
+      [req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Doctor profile not found' });
+    }
+    if (is_online && !rows[0].online_consultation) {
+      return res.status(400).json({
+        error: 'Online consultations are not enabled for your profile. Contact admin.',
+      });
+    }
+
+    await pool.query('UPDATE doctors SET is_online = ? WHERE user_id = ?', [is_online, req.user.id]);
+    res.json({ is_online, online_consultation: rows[0].online_consultation });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

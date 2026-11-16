@@ -33,6 +33,11 @@ export function isJazzCashConfigured() {
   return getConfig() !== null;
 }
 
+/** True when JAZZCASH_ENV=production — real wallet deductions via JazzCash API. */
+export function isProduction() {
+  return getConfig()?.env === 'production';
+}
+
 export function normalizePhone(phone) {
   const digits = String(phone).replace(/\D/g, '');
   if (digits.startsWith('92') && digits.length === 12) {

@@ -125,3 +125,51 @@ ${appointmentsUrl ? `View your appointments: ${appointmentsUrl}\n\n` : ''}Thank 
   await mailer.sendMail({ from, to, subject, text, html });
   return { devMode: false };
 }
+
+export async function sendDoctorAppointmentNotificationEmail({
+  to,
+  doctorName,
+  patientName,
+  specialtyName,
+  appointmentDisplay,
+  typeLabel,
+  frontendUrl,
+}) {
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@bestechcare.pk';
+  const subject = `New appointment booked — ${patientName}`;
+  const appointmentsUrl = frontendUrl ? `${frontendUrl.replace(/\/$/, '')}/doctor/consultations` : '';
+
+  const text = `Hi Dr. ${doctorName},
+
+A new appointment has been booked with you.
+
+Patient: ${patientName}
+Specialty: ${specialtyName}
+When: ${appointmentDisplay}
+Type: ${typeLabel}
+
+${appointmentsUrl ? `View your appointments: ${appointmentsUrl}\n\n` : ''}BestechCare`;
+
+  const html = `
+    <p>Hi Dr. ${doctorName},</p>
+    <p>A new appointment has been <strong>booked</strong> with you.</p>
+    <table cellpadding="6" style="border-collapse:collapse;">
+      <tr><td><strong>Patient</strong></td><td>${patientName}</td></tr>
+      <tr><td><strong>Specialty</strong></td><td>${specialtyName}</td></tr>
+      <tr><td><strong>When</strong></td><td>${appointmentDisplay}</td></tr>
+      <tr><td><strong>Type</strong></td><td>${typeLabel}</td></tr>
+    </table>
+    ${appointmentsUrl ? `<p><a href="${appointmentsUrl}">View my appointments</a></p>` : ''}
+    <p>BestechCare</p>
+  `;
+
+  const mailer = getTransporter();
+  if (!mailer) {
+    console.log('[email] SMTP not configured — doctor appointment notification for', to);
+    console.log(text);
+    return { devMode: true };
+  }
+
+  await mailer.sendMail({ from, to, subject, text, html });
+  return { devMode: false };
+}
