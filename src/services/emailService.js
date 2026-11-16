@@ -20,6 +20,22 @@ function getTransporter() {
   return transporter;
 }
 
+async function deliverMail(mail, logLabel, to) {
+  const mailer = getTransporter();
+  if (!mailer) {
+    console.log(`[email] SMTP not configured — ${logLabel} for`, to);
+    return { sent: false, devMode: true };
+  }
+
+  try {
+    await mailer.sendMail(mail);
+    return { sent: true, devMode: false };
+  } catch (err) {
+    console.error(`[email] ${logLabel} failed for ${to}:`, err.message);
+    return { sent: false, devMode: false };
+  }
+}
+
 export async function sendVerificationEmail({ to, name, verifyUrl }) {
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@bestechcare.pk';
   const subject = 'Verify your BestechCare account';
@@ -33,15 +49,9 @@ export async function sendVerificationEmail({ to, name, verifyUrl }) {
     <p>If you did not create an account, you can ignore this email.</p>
   `;
 
-  const mailer = getTransporter();
-  if (!mailer) {
-    console.log('[email] SMTP not configured — verification link for', to);
-    console.log(verifyUrl);
-    return { devMode: true };
-  }
-
-  await mailer.sendMail({ from, to, subject, text, html });
-  return { devMode: false };
+  const result = await deliverMail({ from, to, subject, text, html }, 'verification link', to);
+  if (result.devMode) console.log(verifyUrl);
+  return result;
 }
 
 export async function sendPaymentOtpEmail({ to, name, otp, amount, title, phone }) {
@@ -57,14 +67,9 @@ export async function sendPaymentOtpEmail({ to, name, otp, amount, title, phone 
     <p>If you did not request this payment, you can ignore this email.</p>
   `;
 
-  const mailer = getTransporter();
-  if (!mailer) {
-    console.log('[email] SMTP not configured — payment OTP for', to, ':', otp);
-    return { devMode: true };
-  }
-
-  await mailer.sendMail({ from, to, subject, text, html });
-  return { devMode: false };
+  const result = await deliverMail({ from, to, subject, text, html }, 'payment OTP', to);
+  if (result.devMode) console.log('[email] payment OTP for', to, ':', otp);
+  return result;
 }
 
 export async function sendAppointmentConfirmationEmail({
@@ -115,15 +120,9 @@ ${appointmentsUrl ? `View your appointments: ${appointmentsUrl}\n\n` : ''}Thank 
     <p>Thank you for choosing BestechCare.</p>
   `;
 
-  const mailer = getTransporter();
-  if (!mailer) {
-    console.log('[email] SMTP not configured — appointment confirmation for', to);
-    console.log(text);
-    return { devMode: true };
-  }
-
-  await mailer.sendMail({ from, to, subject, text, html });
-  return { devMode: false };
+  const result = await deliverMail({ from, to, subject, text, html }, 'appointment confirmation', to);
+  if (result.devMode) console.log(text);
+  return result;
 }
 
 export async function sendDoctorAppointmentNotificationEmail({
@@ -163,13 +162,7 @@ ${appointmentsUrl ? `View your appointments: ${appointmentsUrl}\n\n` : ''}Bestec
     <p>BestechCare</p>
   `;
 
-  const mailer = getTransporter();
-  if (!mailer) {
-    console.log('[email] SMTP not configured — doctor appointment notification for', to);
-    console.log(text);
-    return { devMode: true };
-  }
-
-  await mailer.sendMail({ from, to, subject, text, html });
-  return { devMode: false };
+  const result = await deliverMail({ from, to, subject, text, html }, 'doctor appointment notification', to);
+  if (result.devMode) console.log(text);
+  return result;
 }

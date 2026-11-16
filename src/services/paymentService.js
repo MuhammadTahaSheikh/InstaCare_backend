@@ -128,7 +128,6 @@ async function startTestOtpPayment({ paymentId, userId, preview, phone, method }
     [hashOtp(otp), getOtpExpiry(), paymentId]
   );
 
-  let smsSent = false;
   if (isSmsConfigured()) {
     try {
       const smsResult = await sendPaymentOtpSms({
@@ -138,7 +137,6 @@ async function startTestOtpPayment({ paymentId, userId, preview, phone, method }
         title: preview.title,
       });
       if (smsResult.sent) {
-        smsSent = true;
         return {
           payment_id: paymentId,
           amount: preview.amount,
@@ -156,7 +154,7 @@ async function startTestOtpPayment({ paymentId, userId, preview, phone, method }
 
   const user = await getUserContact(userId);
   if (user?.email) {
-    await sendPaymentOtpEmail({
+    const emailResult = await sendPaymentOtpEmail({
       to: user.email,
       name: user.name,
       otp,
@@ -165,22 +163,28 @@ async function startTestOtpPayment({ paymentId, userId, preview, phone, method }
       phone,
     });
 
-    const response = {
+    if (emailResult.sent) {
+      return {
+        payment_id: paymentId,
+        amount: preview.amount,
+        method,
+        mode: 'email',
+        payment_mode: 'test',
+        otp_required: true,
+        message: `SMS unavailable — OTP sent to ${user.email}. No money will be deducted in test mode.`,
+      };
+    }
+
+    return {
       payment_id: paymentId,
       amount: preview.amount,
       method,
-      mode: smsSent ? 'sms' : 'email',
+      mode: 'demo',
       payment_mode: 'test',
       otp_required: true,
-      message: smsSent
-        ? `OTP sent to ${maskPhone(phone)}. Check your SMS.`
-        : `SMS unavailable — OTP sent to ${user.email}. No money will be deducted in test mode.`,
+      demo_otp: otp,
+      message: 'SMS and email could not deliver the OTP. Use the code shown below. No money will be deducted in test mode.',
     };
-
-    if (!smsSent && process.env.NODE_ENV !== 'production') {
-      response.demo_otp = otp;
-    }
-    return response;
   }
 
   if (process.env.NODE_ENV !== 'production') {

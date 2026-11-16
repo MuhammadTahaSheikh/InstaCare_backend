@@ -55,7 +55,20 @@ export async function register(req, res) {
     );
 
     const verifyUrl = buildVerifyUrl(verificationToken);
-    await sendVerificationEmail({ to: normalizedEmail, name, verifyUrl });
+    const emailResult = await sendVerificationEmail({ to: normalizedEmail, name, verifyUrl });
+
+    if (!emailResult.sent && !emailResult.devMode) {
+      await pool.query(
+        'UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_token_expires_at = NULL WHERE id = ?',
+        [result.insertId]
+      );
+      return res.status(201).json({
+        message: 'Account created. The verification email could not be sent, so you can log in now.',
+        email: normalizedEmail,
+        can_login: true,
+        user: { id: result.insertId, name, email: normalizedEmail, role },
+      });
+    }
 
     res.status(201).json({
       message: 'Registration successful. Please check your email to verify your account.',
@@ -134,7 +147,18 @@ export async function resendVerification(req, res) {
     );
 
     const verifyUrl = buildVerifyUrl(verificationToken);
-    await sendVerificationEmail({ to: normalizedEmail, name: user.name, verifyUrl });
+    const emailResult = await sendVerificationEmail({ to: normalizedEmail, name: user.name, verifyUrl });
+
+    if (!emailResult.sent && !emailResult.devMode) {
+      await pool.query(
+        'UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_token_expires_at = NULL WHERE id = ?',
+        [user.id]
+      );
+      return res.json({
+        message: 'The verification email could not be sent, so your account is ready. You can log in now.',
+        can_login: true,
+      });
+    }
 
     res.json({ message: 'If an account exists with this email, a verification link has been sent.' });
   } catch (err) {
